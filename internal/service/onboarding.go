@@ -813,6 +813,7 @@ func (s *onboardingService) createDefaultSubscriptions(ctx context.Context, cust
 		BillingPeriod:      types.BILLING_PERIOD_MONTHLY,
 		BillingPeriodCount: 1,
 		BillingCycle:       types.BillingCycleAnniversary,
+		InvoiceCadence:     types.InvoiceCadenceAdvance,
 	}
 
 	resp, err := subscriptionService.CreateSubscription(ctx, subscription)

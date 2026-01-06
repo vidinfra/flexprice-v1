@@ -73,6 +73,8 @@ type Subscription struct {
 
 	BillingCadence types.BillingCadence `db:"billing_cadence" json:"billing_cadence"`
 
+	InvoiceCadence types.InvoiceCadence `db:"invoice_cadence" json:"invoice_cadence"`
+
 	BillingPeriod types.BillingPeriod `db:"billing_period" json:"billing_period"`
 
 	// BillingPeriodCount is the total number units of the billing period.

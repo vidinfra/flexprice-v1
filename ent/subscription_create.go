@@ -463,6 +463,20 @@ func (sc *SubscriptionCreate) SetNillableGatewayPaymentMethodID(s *string) *Subs
 	return sc
 }
 
+// SetInvoiceCadence sets the "invoice_cadence" field.
+func (sc *SubscriptionCreate) SetInvoiceCadence(tc types.InvoiceCadence) *SubscriptionCreate {
+	sc.mutation.SetInvoiceCadence(tc)
+	return sc
+}
+
+// SetNillableInvoiceCadence sets the "invoice_cadence" field if the given value is not nil.
+func (sc *SubscriptionCreate) SetNillableInvoiceCadence(tc *types.InvoiceCadence) *SubscriptionCreate {
+	if tc != nil {
+		sc.SetInvoiceCadence(*tc)
+	}
+	return sc
+}
+
 // SetCustomerTimezone sets the "customer_timezone" field.
 func (sc *SubscriptionCreate) SetCustomerTimezone(s string) *SubscriptionCreate {
 	sc.mutation.SetCustomerTimezone(s)
@@ -723,6 +737,10 @@ func (sc *SubscriptionCreate) defaults() {
 		v := subscription.DefaultCollectionMethod
 		sc.mutation.SetCollectionMethod(v)
 	}
+	if _, ok := sc.mutation.InvoiceCadence(); !ok {
+		v := subscription.DefaultInvoiceCadence
+		sc.mutation.SetInvoiceCadence(v)
+	}
 	if _, ok := sc.mutation.CustomerTimezone(); !ok {
 		v := subscription.DefaultCustomerTimezone
 		sc.mutation.SetCustomerTimezone(v)
@@ -855,6 +873,14 @@ func (sc *SubscriptionCreate) check() error {
 	if v, ok := sc.mutation.CollectionMethod(); ok {
 		if err := v.Validate(); err != nil {
 			return &ValidationError{Name: "collection_method", err: fmt.Errorf(`ent: validator failed for field "Subscription.collection_method": %w`, err)}
+		}
+	}
+	if _, ok := sc.mutation.InvoiceCadence(); !ok {
+		return &ValidationError{Name: "invoice_cadence", err: errors.New(`ent: missing required field "Subscription.invoice_cadence"`)}
+	}
+	if v, ok := sc.mutation.InvoiceCadence(); ok {
+		if err := v.Validate(); err != nil {
+			return &ValidationError{Name: "invoice_cadence", err: fmt.Errorf(`ent: validator failed for field "Subscription.invoice_cadence": %w`, err)}
 		}
 	}
 	if _, ok := sc.mutation.CustomerTimezone(); !ok {
@@ -1045,6 +1071,10 @@ func (sc *SubscriptionCreate) createSpec() (*Subscription, *sqlgraph.CreateSpec)
 	if value, ok := sc.mutation.GatewayPaymentMethodID(); ok {
 		_spec.SetField(subscription.FieldGatewayPaymentMethodID, field.TypeString, value)
 		_node.GatewayPaymentMethodID = value
+	}
+	if value, ok := sc.mutation.InvoiceCadence(); ok {
+		_spec.SetField(subscription.FieldInvoiceCadence, field.TypeString, value)
+		_node.InvoiceCadence = value
 	}
 	if value, ok := sc.mutation.CustomerTimezone(); ok {
 		_spec.SetField(subscription.FieldCustomerTimezone, field.TypeString, value)
