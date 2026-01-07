@@ -207,7 +207,7 @@ email:
   calendar_url: "" # Calendar booking URL for onboarding
 
 rbac:
-  roles_config_path: "internal/config/rbac/roles.json" # Path to the roles.json file
+  roles_config_path: "config/rbac/roles.json" # Path to the roles.json file
 
 # Generic OAuth configuration for multiple integration providers
 oauth:
