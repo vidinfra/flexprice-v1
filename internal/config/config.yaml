@@ -216,3 +216,18 @@ oauth:
   # Staging: https://admin-dev.flexprice.io/tools/integrations/oauth/callback
   # Production: https://admin.flexprice.io/tools/integrations/oauth/callback
   redirect_uri: ""
+
+sslcommerz:
+  # SSLCommerz Sandbox Configuration
+  base_url: "https://sandbox.sslcommerz.com"
+  session_api: "https://sandbox.sslcommerz.com/gwprocess/v4/api.php"
+  validation_api: "https://sandbox.sslcommerz.com/validator/api/validationserverAPI.php"
+  # IPN URL - your webhook endpoint that SSLCommerz will call
+  ipn_url: "https://seedless-garishly-ahmed.ngrok-free.dev/v1/webhooks/sslcommerz/tenant_01KENX6HXZ8RPT19GVZNS3HEAC/env_01KENX6J4VH3NG12Z5WQ12TDEE"
+  # Redirect URLs after payment
+  success_url: "https://seedless-garishly-ahmed.ngrok-free.dev/payment/success"
+  fail_url: "https://seedless-garishly-ahmed.ngrok-free.dev/payment/fail"
+  cancel_url: "https://seedless-garishly-ahmed.ngrok-free.dev/payment/cancel"
+  # Sandbox credentials (for testing only - use env vars in production)
+  sandbox_store_id: "tenby696f666141d65"
+  sandbox_store_pass: "tenby696f666141d65@ssl"

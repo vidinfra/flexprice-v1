@@ -13,6 +13,7 @@ import (
 	nomodwebhook "github.com/flexprice/flexprice/internal/integration/nomod/webhook"
 	quickbookswebhook "github.com/flexprice/flexprice/internal/integration/quickbooks/webhook"
 	razorpaywebhook "github.com/flexprice/flexprice/internal/integration/razorpay/webhook"
+	sslcommerzwebhook "github.com/flexprice/flexprice/internal/integration/sslcommerz/webhook"
 	"github.com/flexprice/flexprice/internal/integration/stripe/webhook"
 	"github.com/flexprice/flexprice/internal/interfaces"
 	"github.com/flexprice/flexprice/internal/logger"
@@ -904,4 +905,108 @@ func (h *WebhookHandler) HandleNomodWebhook(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"message": "Webhook processed successfully",
 	})
+}
+
+// @Summary Handle SSLCommerz webhook events (IPN)
+// @Description Process incoming SSLCommerz IPN (Instant Payment Notification) webhook events
+// @Tags Webhooks
+// @Accept application/x-www-form-urlencoded
+// @Produce json
+// @Param tenant_id path string true "Tenant ID"
+// @Param environment_id path string true "Environment ID"
+// @Success 200 {object} map[string]interface{} "Webhook received (always returns 200)"
+// @Router /webhooks/sslcommerz/{tenant_id}/{environment_id} [post]
+func (h *WebhookHandler) HandleSSLCommerzWebhook(c *gin.Context) {
+	// Always return 200 OK to SSLCommerz to prevent retries
+	// We log errors internally but don't expose them to SSLCommerz
+	defer func() {
+		c.JSON(http.StatusOK, gin.H{
+			"message": "Webhook received",
+		})
+	}()
+
+	tenantID := c.Param("tenant_id")
+	environmentID := c.Param("environment_id")
+
+	if tenantID == "" || environmentID == "" {
+		h.logger.Errorw("missing tenant_id or environment_id in SSLCommerz webhook URL",
+			"tenant_id", tenantID,
+			"environment_id", environmentID)
+		return
+	}
+
+	// Parse form data from SSLCommerz IPN
+	if err := c.Request.ParseForm(); err != nil {
+		h.logger.Errorw("failed to parse SSLCommerz IPN form data", "error", err)
+		return
+	}
+
+	// Set context with tenant and environment IDs
+	ctx := types.SetTenantID(c.Request.Context(), tenantID)
+	ctx = types.SetEnvironmentID(ctx, environmentID)
+	c.Request = c.Request.WithContext(ctx)
+
+	// Get SSLCommerz integration
+	sslcommerzIntegration, err := h.integrationFactory.GetSSLCommerzIntegration(ctx)
+	if err != nil {
+		h.logger.Errorw("failed to get SSLCommerz integration", "error", err)
+		return
+	}
+
+	// Extract IPN data from form
+	ipnData := &sslcommerzwebhook.SSLCommerzIPNData{
+		TranID:            c.PostForm("tran_id"),
+		ValID:             c.PostForm("val_id"),
+		Amount:            c.PostForm("amount"),
+		CardType:          c.PostForm("card_type"),
+		StoreAmount:       c.PostForm("store_amount"),
+		CardNo:            c.PostForm("card_no"),
+		BankTranID:        c.PostForm("bank_tran_id"),
+		Status:            c.PostForm("status"),
+		TranDate:          c.PostForm("tran_date"),
+		Currency:          c.PostForm("currency"),
+		CardIssuer:        c.PostForm("card_issuer"),
+		CardBrand:         c.PostForm("card_brand"),
+		CardIssuerCountry: c.PostForm("card_issuer_country"),
+		RiskLevel:         c.PostForm("risk_level"),
+		RiskTitle:         c.PostForm("risk_title"),
+		ValueA:            c.PostForm("value_a"), // tenant_id
+		ValueB:            c.PostForm("value_b"), // environment_id
+		ValueC:            c.PostForm("value_c"), // payment_id
+		ValueD:            c.PostForm("value_d"), // extra data
+	}
+
+	h.logger.Infow("received SSLCommerz IPN webhook",
+		"tenant_id", tenantID,
+		"environment_id", environmentID,
+		"tran_id", ipnData.TranID,
+		"val_id", ipnData.ValID,
+		"status", ipnData.Status,
+		"amount", ipnData.Amount)
+
+	// Create service dependencies for webhook handler
+	serviceDeps := &sslcommerzwebhook.ServiceDependencies{
+		CustomerService:                 h.customerService,
+		PaymentService:                  h.paymentService,
+		InvoiceService:                  h.invoiceService,
+		PlanService:                     h.planService,
+		SubscriptionService:             h.subscriptionService,
+		EntityIntegrationMappingService: h.entityIntegrationMappingService,
+		DB:                              h.db,
+	}
+
+	// Handle the IPN event
+	err = sslcommerzIntegration.WebhookHandler.HandleIPN(ctx, ipnData, serviceDeps)
+	if err != nil {
+		h.logger.Errorw("failed to handle SSLCommerz IPN event",
+			"error", err,
+			"tran_id", ipnData.TranID,
+			"environment_id", environmentID)
+		return
+	}
+
+	h.logger.Infow("successfully processed SSLCommerz IPN webhook",
+		"tran_id", ipnData.TranID,
+		"environment_id", environmentID,
+		"status", ipnData.Status)
 }

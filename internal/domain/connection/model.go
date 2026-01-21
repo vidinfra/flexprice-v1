@@ -195,6 +195,17 @@ func convertMapToConnectionMetadata(metadata map[string]interface{}, providerTyp
 		return types.ConnectionMetadata{
 			Nomod: nomodMetadata,
 		}
+	case types.SecretProviderSSLCommerz:
+		sslcommerzMetadata := &types.SSLCommerzConnectionMetadata{}
+		if storeID, ok := metadata["store_id"].(string); ok {
+			sslcommerzMetadata.StoreID = storeID
+		}
+		if storePassword, ok := metadata["store_password"].(string); ok {
+			sslcommerzMetadata.StorePassword = storePassword
+		}
+		return types.ConnectionMetadata{
+			SSLCommerz: sslcommerzMetadata,
+		}
 	default:
 		// For other providers or unknown types, use generic format
 		return types.ConnectionMetadata{

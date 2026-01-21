@@ -8,15 +8,16 @@ import (
 type PaymentGatewayType string
 
 const (
-	PaymentGatewayTypeStripe   PaymentGatewayType = "stripe"
-	PaymentGatewayTypeRazorpay PaymentGatewayType = "razorpay"
-	PaymentGatewayTypeNomod    PaymentGatewayType = "nomod"
+	PaymentGatewayTypeStripe     PaymentGatewayType = "stripe"
+	PaymentGatewayTypeRazorpay   PaymentGatewayType = "razorpay"
+	PaymentGatewayTypeNomod      PaymentGatewayType = "nomod"
+	PaymentGatewayTypeSSLCommerz PaymentGatewayType = "sslcommerz"
 )
 
 // Validate validates the payment gateway type
 func (p PaymentGatewayType) Validate() error {
 	switch p {
-	case PaymentGatewayTypeStripe, PaymentGatewayTypeRazorpay, PaymentGatewayTypeNomod:
+	case PaymentGatewayTypeStripe, PaymentGatewayTypeRazorpay, PaymentGatewayTypeNomod, PaymentGatewayTypeSSLCommerz:
 		return nil
 	default:
 		return ierr.NewError("invalid payment gateway type").
@@ -26,6 +27,7 @@ func (p PaymentGatewayType) Validate() error {
 					PaymentGatewayTypeStripe,
 					PaymentGatewayTypeRazorpay,
 					PaymentGatewayTypeNomod,
+					PaymentGatewayTypeSSLCommerz,
 				},
 			}).
 			Mark(ierr.ErrValidation)

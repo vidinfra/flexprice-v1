@@ -46,6 +46,7 @@ type Configuration struct {
 	RBAC                       RBACConfig                       `mapstructure:"rbac" validate:"omitempty"`
 	OAuth                      OAuthConfig                      `mapstructure:"oauth" validate:"required"`
 	WalletBalanceAlert         WalletBalanceAlertConfig         `mapstructure:"wallet_balance_alert" validate:"required"`
+	SSLCommerz                 SSLCommerzConfig                 `mapstructure:"sslcommerz" validate:"omitempty"`
 }
 
 type CacheConfig struct {
@@ -407,4 +408,17 @@ type OAuthConfig struct {
 	// Base redirect URI - provider-specific paths may be appended
 	// Example: "https://admin-dev.flexprice.io/tools/integrations/oauth/callback"
 	RedirectURI string `mapstructure:"redirect_uri" validate:"required,url"`
+}
+
+// SSLCommerzConfig holds SSLCommerz payment gateway configuration
+type SSLCommerzConfig struct {
+	BaseURL          string `mapstructure:"base_url" validate:"omitempty"`           // SSLCommerz API base URL (sandbox or production)
+	SessionAPI       string `mapstructure:"session_api" validate:"omitempty"`        // Session API endpoint to generate transaction
+	ValidationAPI    string `mapstructure:"validation_api" validate:"omitempty"`     // Validation API endpoint
+	IPNURL           string `mapstructure:"ipn_url" validate:"omitempty"`            // IPN webhook endpoint URL
+	SuccessURL       string `mapstructure:"success_url" validate:"omitempty"`        // Default success redirect URL
+	FailURL          string `mapstructure:"fail_url" validate:"omitempty"`           // Default fail redirect URL
+	CancelURL        string `mapstructure:"cancel_url" validate:"omitempty"`         // Default cancel redirect URL
+	SandboxStoreID   string `mapstructure:"sandbox_store_id" validate:"omitempty"`   // Sandbox Store ID for testing
+	SandboxStorePass string `mapstructure:"sandbox_store_pass" validate:"omitempty"` // Sandbox Store Password for testing
 }

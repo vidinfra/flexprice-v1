@@ -14,8 +14,9 @@ const (
 	ConnectionMetadataTypeS3        ConnectionMetadataType = "s3"
 	ConnectionMetadataTypeHubSpot   ConnectionMetadataType = "hubspot"
 	ConnectionMetadataTypeRazorpay  ConnectionMetadataType = "razorpay"
-	ConnectionMetadataTypeChargebee ConnectionMetadataType = "chargebee"
-	ConnectionMetadataTypeNomod     ConnectionMetadataType = "nomod"
+	ConnectionMetadataTypeChargebee   ConnectionMetadataType = "chargebee"
+	ConnectionMetadataTypeNomod       ConnectionMetadataType = "nomod"
+	ConnectionMetadataTypeSSLCommerz  ConnectionMetadataType = "sslcommerz"
 )
 
 func (t ConnectionMetadataType) Validate() error {
@@ -27,10 +28,11 @@ func (t ConnectionMetadataType) Validate() error {
 		ConnectionMetadataTypeRazorpay,
 		ConnectionMetadataTypeChargebee,
 		ConnectionMetadataTypeNomod,
+		ConnectionMetadataTypeSSLCommerz,
 	}
 	if !lo.Contains(allowedTypes, t) {
 		return ierr.NewError("invalid connection metadata type").
-			WithHint("Connection metadata type must be one of: stripe, generic, s3, hubspot, razorpay, chargebee, nomod").
+			WithHint("Connection metadata type must be one of: stripe, generic, s3, hubspot, razorpay, chargebee, nomod, sslcommerz").
 			Mark(ierr.ErrValidation)
 	}
 	return nil
@@ -205,6 +207,27 @@ func (n *NomodConnectionMetadata) Validate() error {
 	return nil
 }
 
+// SSLCommerzConnectionMetadata represents SSLCommerz-specific connection metadata
+type SSLCommerzConnectionMetadata struct {
+	StoreID       string `json:"store_id"`       // SSLCommerz Store ID (encrypted)
+	StorePassword string `json:"store_password"` // SSLCommerz Store Password (encrypted)
+}
+
+// Validate validates the SSLCommerz connection metadata
+func (s *SSLCommerzConnectionMetadata) Validate() error {
+	if s.StoreID == "" {
+		return ierr.NewError("store_id is required").
+			WithHint("SSLCommerz store ID is required").
+			Mark(ierr.ErrValidation)
+	}
+	if s.StorePassword == "" {
+		return ierr.NewError("store_password is required").
+			WithHint("SSLCommerz store password is required").
+			Mark(ierr.ErrValidation)
+	}
+	return nil
+}
+
 // ConnectionSettings represents general connection settings
 type ConnectionSettings struct {
 	InvoiceSyncEnable *bool `json:"invoice_sync_enable,omitempty"`
@@ -247,15 +270,16 @@ func (g *GenericConnectionMetadata) Validate() error {
 
 // ConnectionMetadata represents structured connection metadata
 type ConnectionMetadata struct {
-	Stripe     *StripeConnectionMetadata     `json:"stripe,omitempty"`
-	S3         *S3ConnectionMetadata         `json:"s3,omitempty"`
-	HubSpot    *HubSpotConnectionMetadata    `json:"hubspot,omitempty"`
-	Razorpay   *RazorpayConnectionMetadata   `json:"razorpay,omitempty"`
-	Chargebee  *ChargebeeConnectionMetadata  `json:"chargebee,omitempty"`
-	QuickBooks *QuickBooksConnectionMetadata `json:"quickbooks,omitempty"`
-	Nomod      *NomodConnectionMetadata      `json:"nomod,omitempty"`
-	Generic    *GenericConnectionMetadata    `json:"generic,omitempty"`
-	Settings   *ConnectionSettings           `json:"settings,omitempty"`
+	Stripe      *StripeConnectionMetadata      `json:"stripe,omitempty"`
+	S3          *S3ConnectionMetadata          `json:"s3,omitempty"`
+	HubSpot     *HubSpotConnectionMetadata     `json:"hubspot,omitempty"`
+	Razorpay    *RazorpayConnectionMetadata    `json:"razorpay,omitempty"`
+	Chargebee   *ChargebeeConnectionMetadata   `json:"chargebee,omitempty"`
+	QuickBooks  *QuickBooksConnectionMetadata  `json:"quickbooks,omitempty"`
+	Nomod       *NomodConnectionMetadata       `json:"nomod,omitempty"`
+	SSLCommerz  *SSLCommerzConnectionMetadata  `json:"sslcommerz,omitempty"`
+	Generic     *GenericConnectionMetadata     `json:"generic,omitempty"`
+	Settings    *ConnectionSettings            `json:"settings,omitempty"`
 }
 
 // Validate validates the connection metadata based on provider type
@@ -310,6 +334,13 @@ func (c *ConnectionMetadata) Validate(providerType SecretProvider) error {
 				Mark(ierr.ErrValidation)
 		}
 		return c.Nomod.Validate()
+	case SecretProviderSSLCommerz:
+		if c.SSLCommerz == nil {
+			return ierr.NewError("sslcommerz metadata is required").
+				WithHint("SSLCommerz metadata is required for sslcommerz provider").
+				Mark(ierr.ErrValidation)
+		}
+		return c.SSLCommerz.Validate()
 	default:
 		// For other providers or unknown types, use generic format
 		if c.Generic == nil {
