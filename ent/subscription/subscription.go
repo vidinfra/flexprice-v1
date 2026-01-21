@@ -86,6 +86,8 @@ const (
 	FieldCollectionMethod = "collection_method"
 	// FieldGatewayPaymentMethodID holds the string denoting the gateway_payment_method_id field in the database.
 	FieldGatewayPaymentMethodID = "gateway_payment_method_id"
+	// FieldInvoiceCadence holds the string denoting the invoice_cadence field in the database.
+	FieldInvoiceCadence = "invoice_cadence"
 	// FieldCustomerTimezone holds the string denoting the customer_timezone field in the database.
 	FieldCustomerTimezone = "customer_timezone"
 	// FieldProrationBehavior holds the string denoting the proration_behavior field in the database.
@@ -199,6 +201,7 @@ var Columns = []string{
 	FieldPaymentBehavior,
 	FieldCollectionMethod,
 	FieldGatewayPaymentMethodID,
+	FieldInvoiceCadence,
 	FieldCustomerTimezone,
 	FieldProrationBehavior,
 	FieldEnableTrueUp,
@@ -266,6 +269,8 @@ var (
 	DefaultPaymentBehavior types.PaymentBehavior
 	// DefaultCollectionMethod holds the default value on creation for the "collection_method" field.
 	DefaultCollectionMethod types.CollectionMethod
+	// DefaultInvoiceCadence holds the default value on creation for the "invoice_cadence" field.
+	DefaultInvoiceCadence types.InvoiceCadence
 	// DefaultCustomerTimezone holds the default value on creation for the "customer_timezone" field.
 	DefaultCustomerTimezone string
 	// DefaultProrationBehavior holds the default value on creation for the "proration_behavior" field.
@@ -452,6 +457,11 @@ func ByCollectionMethod(opts ...sql.OrderTermOption) OrderOption {
 // ByGatewayPaymentMethodID orders the results by the gateway_payment_method_id field.
 func ByGatewayPaymentMethodID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldGatewayPaymentMethodID, opts...).ToFunc()
+}
+
+// ByInvoiceCadence orders the results by the invoice_cadence field.
+func ByInvoiceCadence(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldInvoiceCadence, opts...).ToFunc()
 }
 
 // ByCustomerTimezone orders the results by the customer_timezone field.

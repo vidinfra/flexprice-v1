@@ -94,9 +94,9 @@ webhook:
   multiplier: 2.0
   max_elapsed_time: 2m
   tenants:
-    "00000000-0000-0000-0000-000000000000":
+    "tenant_01KENX6HXZ8RPT19GVZNS3HEAC": # I can find this in my FlexPrice dashboard or API
       enabled: true
-      endpoint: "http://localhost:8080/health"
+      endpoint: "http://localhost:8090/v1/webhooks/flexprice/alert" # My webhook URL - That one I defined
       headers:
         "X-Api-Key": "api-key-provided-by-tenant"
       excluded_events:
@@ -207,7 +207,7 @@ email:
   calendar_url: "" # Calendar booking URL for onboarding
 
 rbac:
-  roles_config_path: "internal/config/rbac/roles.json" # Path to the roles.json file
+  roles_config_path: "config/rbac/roles.json" # Path to the roles.json file
 
 # Generic OAuth configuration for multiple integration providers
 oauth:

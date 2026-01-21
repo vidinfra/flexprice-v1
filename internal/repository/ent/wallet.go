@@ -3,6 +3,7 @@ package ent
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/flexprice/flexprice/ent"
@@ -24,6 +25,9 @@ type walletRepository struct {
 	logger    *logger.Logger
 	queryOpts WalletTransactionQueryOptions
 	cache     cache.Cache
+
+	balanceColumnsOnce sync.Once
+	hasBalanceColumns  bool
 }
 
 func NewWalletRepository(client postgres.IClient, logger *logger.Logger, cache cache.Cache) walletdomain.Repository {
@@ -363,13 +367,19 @@ func (r *walletRepository) CreateTransaction(ctx context.Context, tx *walletdoma
 	})
 	defer FinishSpan(span)
 
-	client := r.client.Writer(ctx)
-
 	// Set environment ID from context if not already set
 	if tx.EnvironmentID == "" {
 		tx.EnvironmentID = types.GetEnvironmentID(ctx)
 	}
 
+	if r.walletTransactionHasBalanceColumns(ctx) {
+		if err := r.createTransactionWithBalanceColumns(ctx, tx); err != nil {
+			return err
+		}
+		return nil
+	}
+
+	client := r.client.Writer(ctx)
 	transaction, err := client.WalletTransaction.Create().
 		SetID(tx.ID).
 		SetTenantID(tx.TenantID).
@@ -411,6 +421,109 @@ func (r *walletRepository) CreateTransaction(ctx context.Context, tx *walletdoma
 	}
 
 	*tx = *walletdomain.TransactionFromEnt(transaction)
+	return nil
+}
+
+func (r *walletRepository) walletTransactionHasBalanceColumns(ctx context.Context) bool {
+	r.balanceColumnsOnce.Do(func() {
+		client := r.client.Reader(ctx)
+		rows, err := client.QueryContext(ctx, `
+			SELECT 1
+			FROM information_schema.columns
+			WHERE table_schema = 'public'
+				AND table_name = 'wallet_transactions'
+				AND column_name = 'balance_before'
+			LIMIT 1`)
+		if err != nil {
+			r.logger.Errorw("failed to detect balance columns on wallet_transactions",
+				"error", err,
+			)
+			return
+		}
+		defer rows.Close()
+		if rows.Next() {
+			r.hasBalanceColumns = true
+		}
+	})
+
+	return r.hasBalanceColumns
+}
+
+func (r *walletRepository) createTransactionWithBalanceColumns(ctx context.Context, tx *walletdomain.Transaction) error {
+	client := r.client.Writer(ctx)
+	_, err := client.ExecContext(ctx, `
+		INSERT INTO wallet_transactions (
+			id,
+			tenant_id,
+			status,
+			created_at,
+			updated_at,
+			created_by,
+			updated_by,
+			environment_id,
+			wallet_id,
+			customer_id,
+			type,
+			amount,
+			credit_amount,
+			balance_before,
+			balance_after,
+			credit_balance_before,
+			credit_balance_after,
+			reference_type,
+			reference_id,
+			description,
+			metadata,
+			transaction_status,
+			credits_available,
+			currency,
+			idempotency_key,
+			transaction_reason,
+			priority,
+			expiry_date
+		) VALUES (
+			$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28
+		)`,
+		tx.ID,
+		tx.TenantID,
+		string(tx.Status),
+		tx.CreatedAt,
+		tx.UpdatedAt,
+		tx.CreatedBy,
+		tx.UpdatedBy,
+		tx.EnvironmentID,
+		tx.WalletID,
+		tx.CustomerID,
+		string(tx.Type),
+		tx.Amount,
+		tx.CreditAmount,
+		tx.BalanceBefore,
+		tx.BalanceAfter,
+		tx.CreditBalanceBefore,
+		tx.CreditBalanceAfter,
+		string(tx.ReferenceType),
+		tx.ReferenceID,
+		tx.Description,
+		tx.Metadata,
+		string(tx.TxStatus),
+		tx.CreditsAvailable,
+		tx.Currency,
+		tx.IdempotencyKey,
+		string(tx.TransactionReason),
+		tx.Priority,
+		tx.ExpiryDate,
+	)
+	if err != nil {
+		return ierr.WithError(err).
+			WithHint("Failed to create wallet transaction").
+			WithReportableDetails(map[string]interface{}{
+				"wallet_id": tx.WalletID,
+				"type":      tx.Type,
+				"amount":    tx.Amount,
+			}).
+			Mark(ierr.ErrDatabase)
+	}
+
 	return nil
 }
 
@@ -840,10 +953,10 @@ func (o WalletTransactionQueryOptions) applyEntityQueryOptions(_ context.Context
 	}
 
 	// Apply sorts using the generic function
-	if f.Sort != nil {
+	if f.SortConditions != nil {
 		query, err = dsl.ApplySorts[WalletTransactionQuery, wallettransaction.OrderOption](
 			query,
-			f.Sort,
+			f.SortConditions,
 			o.GetFieldResolver,
 			func(o dsl.OrderFunc) wallettransaction.OrderOption { return wallettransaction.OrderOption(o) },
 		)

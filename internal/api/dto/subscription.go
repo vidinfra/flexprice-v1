@@ -232,6 +232,7 @@ type CreateSubscriptionRequest struct {
 	// "invoice_to_parent" - Invoices are sent to the parent customer
 	// "invoice_to_self" - Invoices are sent to the subscription's customer
 	InvoiceBilling *types.InvoiceBilling `json:"invoice_billing,omitempty"`
+	InvoiceCadence types.InvoiceCadence  `json:"invoice_cadence,omitempty"`
 
 	PlanID             string               `json:"plan_id" validate:"required"`
 	Currency           string               `json:"currency" validate:"required,len=3"`

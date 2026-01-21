@@ -44151,6 +44151,7 @@ type SubscriptionMutation struct {
 	payment_behavior           *types.PaymentBehavior
 	collection_method          *types.CollectionMethod
 	gateway_payment_method_id  *string
+	invoice_cadence            *types.InvoiceCadence
 	customer_timezone          *string
 	proration_behavior         *types.ProrationBehavior
 	enable_true_up             *bool
@@ -45766,6 +45767,42 @@ func (m *SubscriptionMutation) ResetGatewayPaymentMethodID() {
 	delete(m.clearedFields, subscription.FieldGatewayPaymentMethodID)
 }
 
+// SetInvoiceCadence sets the "invoice_cadence" field.
+func (m *SubscriptionMutation) SetInvoiceCadence(tc types.InvoiceCadence) {
+	m.invoice_cadence = &tc
+}
+
+// InvoiceCadence returns the value of the "invoice_cadence" field in the mutation.
+func (m *SubscriptionMutation) InvoiceCadence() (r types.InvoiceCadence, exists bool) {
+	v := m.invoice_cadence
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldInvoiceCadence returns the old "invoice_cadence" field's value of the Subscription entity.
+// If the Subscription object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SubscriptionMutation) OldInvoiceCadence(ctx context.Context) (v types.InvoiceCadence, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldInvoiceCadence is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldInvoiceCadence requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldInvoiceCadence: %w", err)
+	}
+	return oldValue.InvoiceCadence, nil
+}
+
+// ResetInvoiceCadence resets all changes to the "invoice_cadence" field.
+func (m *SubscriptionMutation) ResetInvoiceCadence() {
+	m.invoice_cadence = nil
+}
+
 // SetCustomerTimezone sets the "customer_timezone" field.
 func (m *SubscriptionMutation) SetCustomerTimezone(s string) {
 	m.customer_timezone = &s
@@ -46308,7 +46345,7 @@ func (m *SubscriptionMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *SubscriptionMutation) Fields() []string {
-	fields := make([]string, 0, 39)
+	fields := make([]string, 0, 40)
 	if m.tenant_id != nil {
 		fields = append(fields, subscription.FieldTenantID)
 	}
@@ -46414,6 +46451,9 @@ func (m *SubscriptionMutation) Fields() []string {
 	if m.gateway_payment_method_id != nil {
 		fields = append(fields, subscription.FieldGatewayPaymentMethodID)
 	}
+	if m.invoice_cadence != nil {
+		fields = append(fields, subscription.FieldInvoiceCadence)
+	}
 	if m.customer_timezone != nil {
 		fields = append(fields, subscription.FieldCustomerTimezone)
 	}
@@ -46504,6 +46544,8 @@ func (m *SubscriptionMutation) Field(name string) (ent.Value, bool) {
 		return m.CollectionMethod()
 	case subscription.FieldGatewayPaymentMethodID:
 		return m.GatewayPaymentMethodID()
+	case subscription.FieldInvoiceCadence:
+		return m.InvoiceCadence()
 	case subscription.FieldCustomerTimezone:
 		return m.CustomerTimezone()
 	case subscription.FieldProrationBehavior:
@@ -46591,6 +46633,8 @@ func (m *SubscriptionMutation) OldField(ctx context.Context, name string) (ent.V
 		return m.OldCollectionMethod(ctx)
 	case subscription.FieldGatewayPaymentMethodID:
 		return m.OldGatewayPaymentMethodID(ctx)
+	case subscription.FieldInvoiceCadence:
+		return m.OldInvoiceCadence(ctx)
 	case subscription.FieldCustomerTimezone:
 		return m.OldCustomerTimezone(ctx)
 	case subscription.FieldProrationBehavior:
@@ -46852,6 +46896,13 @@ func (m *SubscriptionMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetGatewayPaymentMethodID(v)
+		return nil
+	case subscription.FieldInvoiceCadence:
+		v, ok := value.(types.InvoiceCadence)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetInvoiceCadence(v)
 		return nil
 	case subscription.FieldCustomerTimezone:
 		v, ok := value.(string)
@@ -47154,6 +47205,9 @@ func (m *SubscriptionMutation) ResetField(name string) error {
 		return nil
 	case subscription.FieldGatewayPaymentMethodID:
 		m.ResetGatewayPaymentMethodID()
+		return nil
+	case subscription.FieldInvoiceCadence:
+		m.ResetInvoiceCadence()
 		return nil
 	case subscription.FieldCustomerTimezone:
 		m.ResetCustomerTimezone()

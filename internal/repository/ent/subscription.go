@@ -72,6 +72,7 @@ func (r *subscriptionRepository) Create(ctx context.Context, sub *domainSub.Subs
 		SetNillableTrialStart(sub.TrialStart).
 		SetNillableTrialEnd(sub.TrialEnd).
 		SetBillingCadence(sub.BillingCadence).
+		SetInvoiceCadence(sub.InvoiceCadence).
 		SetBillingPeriod(sub.BillingPeriod).
 		SetBillingPeriodCount(sub.BillingPeriodCount).
 		SetBillingCycle(sub.BillingCycle).
