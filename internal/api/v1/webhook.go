@@ -1,6 +1,7 @@
 package v1
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -917,14 +918,6 @@ func (h *WebhookHandler) HandleNomodWebhook(c *gin.Context) {
 // @Success 200 {object} map[string]interface{} "Webhook received (always returns 200)"
 // @Router /webhooks/sslcommerz/{tenant_id}/{environment_id} [post]
 func (h *WebhookHandler) HandleSSLCommerzWebhook(c *gin.Context) {
-	// Always return 200 OK to SSLCommerz to prevent retries
-	// We log errors internally but don't expose them to SSLCommerz
-	defer func() {
-		c.JSON(http.StatusOK, gin.H{
-			"message": "Webhook received",
-		})
-	}()
-
 	tenantID := c.Param("tenant_id")
 	environmentID := c.Param("environment_id")
 
@@ -941,19 +934,7 @@ func (h *WebhookHandler) HandleSSLCommerzWebhook(c *gin.Context) {
 		return
 	}
 
-	// Set context with tenant and environment IDs
-	ctx := types.SetTenantID(c.Request.Context(), tenantID)
-	ctx = types.SetEnvironmentID(ctx, environmentID)
-	c.Request = c.Request.WithContext(ctx)
-
-	// Get SSLCommerz integration
-	sslcommerzIntegration, err := h.integrationFactory.GetSSLCommerzIntegration(ctx)
-	if err != nil {
-		h.logger.Errorw("failed to get SSLCommerz integration", "error", err)
-		return
-	}
-
-	// Extract IPN data from form
+	// Extract IPN data from form BEFORE responding
 	ipnData := &sslcommerzwebhook.SSLCommerzIPNData{
 		TranID:            c.PostForm("tran_id"),
 		ValID:             c.PostForm("val_id"),
@@ -984,29 +965,58 @@ func (h *WebhookHandler) HandleSSLCommerzWebhook(c *gin.Context) {
 		"status", ipnData.Status,
 		"amount", ipnData.Amount)
 
-	// Create service dependencies for webhook handler
-	serviceDeps := &sslcommerzwebhook.ServiceDependencies{
-		CustomerService:                 h.customerService,
-		PaymentService:                  h.paymentService,
-		InvoiceService:                  h.invoiceService,
-		PlanService:                     h.planService,
-		SubscriptionService:             h.subscriptionService,
-		EntityIntegrationMappingService: h.entityIntegrationMappingService,
-		DB:                              h.db,
-	}
+	// Respond immediately to SSLCommerz to prevent timeout
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Webhook received",
+	})
 
-	// Handle the IPN event
-	err = sslcommerzIntegration.WebhookHandler.HandleIPN(ctx, ipnData, serviceDeps)
-	if err != nil {
-		h.logger.Errorw("failed to handle SSLCommerz IPN event",
-			"error", err,
+	bgCtx := context.Background()
+	bgCtx = types.SetTenantID(bgCtx, tenantID)
+	bgCtx = types.SetEnvironmentID(bgCtx, environmentID)
+
+	go func() {
+
+		defer func() {
+			if r := recover(); r != nil {
+				h.logger.Errorw("panic recovered in SSLCommerz webhook processing",
+					"panic", r,
+					"tran_id", ipnData.TranID,
+					"tenant_id", tenantID,
+					"environment_id", environmentID)
+			}
+		}()
+
+		// Get SSLCommerz integration
+		sslcommerzIntegration, err := h.integrationFactory.GetSSLCommerzIntegration(bgCtx)
+		if err != nil {
+			h.logger.Errorw("failed to get SSLCommerz integration", "error", err)
+			return
+		}
+
+		// Create service dependencies for webhook handler
+		serviceDeps := &sslcommerzwebhook.ServiceDependencies{
+			CustomerService:                 h.customerService,
+			PaymentService:                  h.paymentService,
+			InvoiceService:                  h.invoiceService,
+			PlanService:                     h.planService,
+			SubscriptionService:             h.subscriptionService,
+			EntityIntegrationMappingService: h.entityIntegrationMappingService,
+			DB:                              h.db,
+		}
+
+		// Handle the IPN event
+		err = sslcommerzIntegration.WebhookHandler.HandleIPN(bgCtx, ipnData, serviceDeps)
+		if err != nil {
+			h.logger.Errorw("failed to handle SSLCommerz IPN event",
+				"error", err,
+				"tran_id", ipnData.TranID,
+				"environment_id", environmentID)
+			return
+		}
+
+		h.logger.Infow("successfully processed SSLCommerz IPN webhook",
 			"tran_id", ipnData.TranID,
-			"environment_id", environmentID)
-		return
-	}
-
-	h.logger.Infow("successfully processed SSLCommerz IPN webhook",
-		"tran_id", ipnData.TranID,
-		"environment_id", environmentID,
-		"status", ipnData.Status)
+			"environment_id", environmentID,
+			"status", ipnData.Status)
+	}()
 }
