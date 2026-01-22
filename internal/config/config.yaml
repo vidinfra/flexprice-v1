@@ -5,6 +5,7 @@ server:
   address: ":8080"
   allowed_origins:
     - "http://localhost:3000"
+    - "http://localhost:8090"
     - "http://localhost:5173"
     - "https://app.flexprice.io"
     - "https://dashboard.flexprice.io"
