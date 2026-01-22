@@ -145,22 +145,22 @@ func (h *Handler) updatePaymentStatus(
 	errorMsg *string,
 	services *ServiceDependencies,
 ) error {
-	// Find payment by destination_id (invoice_id = tran_id)
+	// Find payment by PaymentID (tran_id now contains PaymentID)
 	payments, err := services.PaymentService.ListPayments(ctx, &types.PaymentFilter{
+		PaymentIDs:      []string{ipnData.TranID},
 		DestinationType: lo.ToPtr(string(types.PaymentDestinationTypeInvoice)),
-		DestinationID:   &ipnData.TranID,
 		QueryFilter:     types.NewNoLimitQueryFilter(),
 	})
 	if err != nil {
-		h.logger.Errorw("failed to list payments for SSLCommerz",
+		h.logger.Errorw("failed to fetch payment for SSLCommerz",
 			"error", err,
-			"tran_id", ipnData.TranID)
+			"payment_id", ipnData.TranID)
 		return err
 	}
 
 	if len(payments.Items) == 0 {
 		h.logger.Warnw("no payment record found for SSLCommerz transaction",
-			"tran_id", ipnData.TranID)
+			"payment_id", ipnData.TranID)
 		return nil // Not an error - payment might not exist yet
 	}
 
@@ -238,17 +238,23 @@ func (h *Handler) handleSuccessfulPayment(
 	ipnData *SSLCommerzIPNData,
 	services *ServiceDependencies,
 ) error {
-	// Find payment record
+	// Find payment by PaymentID (tran_id now contains PaymentID)
 	payments, err := services.PaymentService.ListPayments(ctx, &types.PaymentFilter{
+		PaymentIDs:      []string{ipnData.TranID},
 		DestinationType: lo.ToPtr(string(types.PaymentDestinationTypeInvoice)),
-		DestinationID:   &ipnData.TranID,
 		QueryFilter:     types.NewNoLimitQueryFilter(),
 	})
-	if err != nil || len(payments.Items) == 0 {
+	if err != nil {
 		h.logger.Errorw("failed to fetch payment for reconciliation/topup after SSLCommerz success",
 			"error", err,
-			"tran_id", ipnData.TranID)
+			"payment_id", ipnData.TranID)
 		return err
+	}
+
+	if len(payments.Items) == 0 {
+		h.logger.Warnw("no payment found for reconciliation after SSLCommerz success",
+			"payment_id", ipnData.TranID)
+		return nil
 	}
 
 	payment := payments.Items[0]

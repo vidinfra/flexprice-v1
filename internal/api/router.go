@@ -70,7 +70,7 @@ func NewRouter(handlers Handlers, cfg *config.Configuration, logger *logger.Logg
 	router := gin.Default()
 	router.Use(
 		middleware.RequestIDMiddleware,
-		middleware.CORSMiddleware,
+		middleware.CORSMiddleware(cfg.Server.AllowedOrigins),
 		middleware.SentryMiddleware(cfg),    // Add Sentry middleware
 		middleware.PyroscopeMiddleware(cfg), // Add Pyroscope middleware
 	)

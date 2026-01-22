@@ -65,7 +65,6 @@ type SSLCommerzPaymentLinkResponse struct {
 	CreatedAt          int64           // Unix timestamp
 	PaymentID          string          // FlexPrice payment ID
 	SessionKey         string          // SSLCommerz session key
-	GatewayPageURL     string          // Gateway page URL
 	RedirectGatewayURL string          // Redirect gateway URL
 	StoreBanner        string          // Store banner URL
 	StoreLogo          string          // Store logo URL
@@ -109,7 +108,7 @@ type SSLCommerzValidationResponse struct {
 	CurrencyType          string `json:"currency_type"`
 	CurrencyAmount        string `json:"currency_amount"`
 	CurrencyRate          string `json:"currency_rate"`
-	BaseFair              string `json:"base_fair"`
+	BaseFare              string `json:"base_fair"` // SSLCommerz API uses "base_fair"
 	ValueA                string `json:"value_a"`
 	ValueB                string `json:"value_b"`
 	ValueC                string `json:"value_c"`

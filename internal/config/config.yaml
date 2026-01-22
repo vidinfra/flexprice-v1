@@ -3,6 +3,11 @@ deployment:
 
 server:
   address: ":8080"
+  allowed_origins:
+    - "http://localhost:3000"
+    - "http://localhost:5173"
+    - "https://app.flexprice.io"
+    - "https://dashboard.flexprice.io"
 
 auth:
   provider: "flexprice" # "flexprice" or "supabase"
@@ -228,6 +233,3 @@ sslcommerz:
   success_url: "https://seedless-garishly-ahmed.ngrok-free.dev/payment/success"
   fail_url: "https://seedless-garishly-ahmed.ngrok-free.dev/payment/fail"
   cancel_url: "https://seedless-garishly-ahmed.ngrok-free.dev/payment/cancel"
-  # Sandbox credentials (for testing only - use env vars in production)
-  sandbox_store_id: "tenby696f666141d65"
-  sandbox_store_pass: "tenby696f666141d65@ssl"

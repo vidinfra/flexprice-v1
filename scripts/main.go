@@ -113,11 +113,6 @@ var commands = []Command{
 		Description: "Generate credit usage report for customers in a tenant/environment",
 		Run:         internal.GenerateCreditUsageReport,
 	},
-	{
-		Name:        "seed-sslcommerz-connection",
-		Description: "Seed SSLCommerz payment gateway connection for a tenant/environment",
-		Run:         internal.SeedSSLCommerzConnection,
-	},
 }
 
 // runBulkReprocessEventsCommand wraps the bulk reprocess events with command line parameters
@@ -153,29 +148,26 @@ func runBulkReprocessEventsCommand() error {
 func main() {
 	// Define command line flags
 	var (
-		listCommands         bool
-		cmdName              string
-		email                string
-		tenant               string
-		metersFile           string
-		plansFile            string
-		tenantID             string
-		userID               string
-		password             string
-		environmentID        string
-		filePath             string
-		apiKey               string
-		externalCustomerID   string
-		eventName            string
-		startTime            string
-		endTime              string
-		batchSize            string
-		dryRun               string
-		planID               string
-		addonID              string
-		sslcommerzStoreID    string
-		sslcommerzStorePass  string
-		connectionName       string
+		listCommands        bool
+		cmdName             string
+		email               string
+		tenant              string
+		metersFile          string
+		plansFile           string
+		tenantID            string
+		userID              string
+		password            string
+		environmentID       string
+		filePath            string
+		apiKey              string
+		externalCustomerID  string
+		eventName           string
+		startTime           string
+		endTime             string
+		batchSize           string
+		dryRun              string
+		planID  string
+		addonID string
 	)
 
 	flag.BoolVar(&listCommands, "list", false, "List all available commands")
@@ -198,9 +190,6 @@ func main() {
 	flag.StringVar(&batchSize, "batch-size", "100", "Batch size for reprocessing")
 	flag.StringVar(&dryRun, "dry-run", "false", "Dry run mode (true/false)")
 	flag.StringVar(&addonID, "addon-id", "", "Addon ID for operations")
-	flag.StringVar(&sslcommerzStoreID, "sslcommerz-store-id", "", "SSLCommerz Store ID")
-	flag.StringVar(&sslcommerzStorePass, "sslcommerz-store-password", "", "SSLCommerz Store Password")
-	flag.StringVar(&connectionName, "connection-name", "", "Connection name for payment gateway")
 	flag.Parse()
 
 	if listCommands {
@@ -269,15 +258,6 @@ func main() {
 	}
 	if dryRun != "" {
 		os.Setenv("DRY_RUN", dryRun)
-	}
-	if sslcommerzStoreID != "" {
-		os.Setenv("SSLCOMMERZ_STORE_ID", sslcommerzStoreID)
-	}
-	if sslcommerzStorePass != "" {
-		os.Setenv("SSLCOMMERZ_STORE_PASSWORD", sslcommerzStorePass)
-	}
-	if connectionName != "" {
-		os.Setenv("CONNECTION_NAME", connectionName)
 	}
 
 	// Find and run the command

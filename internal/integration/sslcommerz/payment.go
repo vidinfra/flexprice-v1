@@ -199,7 +199,7 @@ func (s *PaymentService) CreatePaymentLink(
 	formData := &SSLCommerzFormData{
 		TotalAmount:     req.Amount.String(),
 		Currency:        strings.ToUpper(req.Currency),
-		TranID:          req.InvoiceID, // Use invoice ID as transaction ID
+		TranID:          req.PaymentID, // Use payment ID as transaction ID for unique identification
 		SuccessURL:      successURL,
 		FailURL:         failURL,
 		CancelURL:       cancelURL,
@@ -254,7 +254,6 @@ func (s *PaymentService) CreatePaymentLink(
 		CreatedAt:          time.Now().Unix(),
 		PaymentID:          req.PaymentID,
 		SessionKey:         apiResponse.SessionKey,
-		GatewayPageURL:     apiResponse.GatewayPageURL,
 		RedirectGatewayURL: apiResponse.RedirectGatewayURL,
 		StoreBanner:        apiResponse.StoreBanner,
 		StoreLogo:          apiResponse.StoreLogo,
