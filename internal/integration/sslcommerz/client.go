@@ -171,10 +171,6 @@ func (c *Client) decryptConnectionMetadata(conn *connection.Connection) (types.M
 
 	// For SSLCommerz connections, decrypt the structured metadata
 	if conn.ProviderType == types.SecretProviderSSLCommerz {
-		if conn.EncryptedSecretData.SSLCommerz == nil {
-			c.logger.Warnw("no sslcommerz metadata found", "connection_id", conn.ID)
-			return types.Metadata{}, nil
-		}
 
 		// Decrypt each field
 		storeID, err := c.encryptionService.Decrypt(conn.EncryptedSecretData.SSLCommerz.StoreID)
