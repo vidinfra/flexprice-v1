@@ -2205,11 +2205,11 @@ func init() {
 	// wallettransaction.TypeValidator is a validator for the "type" field. It is called by the builders before save.
 	wallettransaction.TypeValidator = wallettransactionDescType.Validators[0].(func(string) error)
 	// wallettransactionDescTransactionStatus is the schema descriptor for transaction_status field.
-	wallettransactionDescTransactionStatus := wallettransactionFields[12].Descriptor()
+	wallettransactionDescTransactionStatus := wallettransactionFields[14].Descriptor()
 	// wallettransaction.DefaultTransactionStatus holds the default value on creation for the transaction_status field.
 	wallettransaction.DefaultTransactionStatus = types.TransactionStatus(wallettransactionDescTransactionStatus.Default.(string))
 	// wallettransactionDescTransactionReason is the schema descriptor for transaction_reason field.
-	wallettransactionDescTransactionReason := wallettransactionFields[17].Descriptor()
+	wallettransactionDescTransactionReason := wallettransactionFields[19].Descriptor()
 	// wallettransaction.DefaultTransactionReason holds the default value on creation for the transaction_reason field.
 	wallettransaction.DefaultTransactionReason = types.TransactionReason(wallettransactionDescTransactionReason.Default.(string))
 }

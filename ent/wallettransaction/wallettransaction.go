@@ -38,6 +38,10 @@ const (
 	FieldAmount = "amount"
 	// FieldCreditAmount holds the string denoting the credit_amount field in the database.
 	FieldCreditAmount = "credit_amount"
+	// FieldBalanceBefore holds the string denoting the balance_before field in the database.
+	FieldBalanceBefore = "balance_before"
+	// FieldBalanceAfter holds the string denoting the balance_after field in the database.
+	FieldBalanceAfter = "balance_after"
 	// FieldCreditBalanceBefore holds the string denoting the credit_balance_before field in the database.
 	FieldCreditBalanceBefore = "credit_balance_before"
 	// FieldCreditBalanceAfter holds the string denoting the credit_balance_after field in the database.
@@ -83,6 +87,8 @@ var Columns = []string{
 	FieldType,
 	FieldAmount,
 	FieldCreditAmount,
+	FieldBalanceBefore,
+	FieldBalanceAfter,
 	FieldCreditBalanceBefore,
 	FieldCreditBalanceAfter,
 	FieldReferenceType,
@@ -199,6 +205,16 @@ func ByAmount(opts ...sql.OrderTermOption) OrderOption {
 // ByCreditAmount orders the results by the credit_amount field.
 func ByCreditAmount(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldCreditAmount, opts...).ToFunc()
+}
+
+// ByBalanceBefore orders the results by the balance_before field.
+func ByBalanceBefore(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldBalanceBefore, opts...).ToFunc()
+}
+
+// ByBalanceAfter orders the results by the balance_after field.
+func ByBalanceAfter(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldBalanceAfter, opts...).ToFunc()
 }
 
 // ByCreditBalanceBefore orders the results by the credit_balance_before field.

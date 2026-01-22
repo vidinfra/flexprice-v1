@@ -189,6 +189,7 @@ func GetSubscriptionFromEnt(sub *ent.Subscription) *Subscription {
 		BillingPeriod:          types.BillingPeriod(sub.BillingPeriod),
 		BillingPeriodCount:     sub.BillingPeriodCount,
 		BillingCycle:           types.BillingCycle(sub.BillingCycle),
+		InvoiceCadence:         types.InvoiceCadence(sub.InvoiceCadence),
 		Version:                sub.Version,
 		Metadata:               sub.Metadata,
 		EnvironmentID:          sub.EnvironmentID,

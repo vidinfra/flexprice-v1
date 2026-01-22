@@ -158,6 +158,18 @@ func (wtc *WalletTransactionCreate) SetCreditAmount(d decimal.Decimal) *WalletTr
 	return wtc
 }
 
+// SetBalanceBefore sets the "balance_before" field.
+func (wtc *WalletTransactionCreate) SetBalanceBefore(d decimal.Decimal) *WalletTransactionCreate {
+	wtc.mutation.SetBalanceBefore(d)
+	return wtc
+}
+
+// SetBalanceAfter sets the "balance_after" field.
+func (wtc *WalletTransactionCreate) SetBalanceAfter(d decimal.Decimal) *WalletTransactionCreate {
+	wtc.mutation.SetBalanceAfter(d)
+	return wtc
+}
+
 // SetCreditBalanceBefore sets the "credit_balance_before" field.
 func (wtc *WalletTransactionCreate) SetCreditBalanceBefore(d decimal.Decimal) *WalletTransactionCreate {
 	wtc.mutation.SetCreditBalanceBefore(d)
@@ -420,6 +432,12 @@ func (wtc *WalletTransactionCreate) check() error {
 	if _, ok := wtc.mutation.CreditAmount(); !ok {
 		return &ValidationError{Name: "credit_amount", err: errors.New(`ent: missing required field "WalletTransaction.credit_amount"`)}
 	}
+	if _, ok := wtc.mutation.BalanceBefore(); !ok {
+		return &ValidationError{Name: "balance_before", err: errors.New(`ent: missing required field "WalletTransaction.balance_before"`)}
+	}
+	if _, ok := wtc.mutation.BalanceAfter(); !ok {
+		return &ValidationError{Name: "balance_after", err: errors.New(`ent: missing required field "WalletTransaction.balance_after"`)}
+	}
 	if _, ok := wtc.mutation.CreditBalanceBefore(); !ok {
 		return &ValidationError{Name: "credit_balance_before", err: errors.New(`ent: missing required field "WalletTransaction.credit_balance_before"`)}
 	}
@@ -532,6 +550,14 @@ func (wtc *WalletTransactionCreate) createSpec() (*WalletTransaction, *sqlgraph.
 	if value, ok := wtc.mutation.CreditAmount(); ok {
 		_spec.SetField(wallettransaction.FieldCreditAmount, field.TypeOther, value)
 		_node.CreditAmount = value
+	}
+	if value, ok := wtc.mutation.BalanceBefore(); ok {
+		_spec.SetField(wallettransaction.FieldBalanceBefore, field.TypeOther, value)
+		_node.BalanceBefore = value
+	}
+	if value, ok := wtc.mutation.BalanceAfter(); ok {
+		_spec.SetField(wallettransaction.FieldBalanceAfter, field.TypeOther, value)
+		_node.BalanceAfter = value
 	}
 	if value, ok := wtc.mutation.CreditBalanceBefore(); ok {
 		_spec.SetField(wallettransaction.FieldCreditBalanceBefore, field.TypeOther, value)
