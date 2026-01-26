@@ -97,3 +97,35 @@ func (b TransactionPayloadBuilder) BuildPayload(
 	return json.Marshal(payload)
 
 }
+
+// WalletNegativeBalancePayloadBuilder builds payloads for wallet negative balance events
+type WalletNegativeBalancePayloadBuilder struct {
+	services *Services
+}
+
+func NewWalletNegativeBalancePayloadBuilder(services *Services) PayloadBuilder {
+	return WalletNegativeBalancePayloadBuilder{
+		services: services,
+	}
+}
+
+func (b WalletNegativeBalancePayloadBuilder) BuildPayload(
+	ctx context.Context,
+	eventType string,
+	data json.RawMessage,
+) (json.RawMessage, error) {
+	// The payload is already complete from the overage billing service
+	// We just need to wrap it in the webhook payload structure
+	var parsedPayload webhookDto.WalletNegativeBalancePayload
+
+	err := json.Unmarshal(data, &parsedPayload)
+	if err != nil {
+		return nil, ierr.WithError(err).
+			WithHint("Unable to unmarshal WalletNegativeBalancePayload").
+			Mark(ierr.ErrInvalidOperation)
+	}
+
+	payload := webhookDto.NewWalletNegativeBalanceWebhookPayload(&parsedPayload, eventType)
+
+	return json.Marshal(payload)
+}

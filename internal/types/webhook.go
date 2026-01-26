@@ -71,6 +71,11 @@ const (
 	WebhookEventPaymentPending = "payment.pending"
 )
 
+// overage billing event names
+const (
+	WebhookEventWalletBalanceNegative = "wallet.balance.negative"
+)
+
 // customer event names
 const (
 	WebhookEventCustomerCreated = "customer.created"

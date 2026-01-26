@@ -681,6 +681,18 @@ func (s *eventPostProcessingService) prepareProcessedEvents(ctx context.Context,
 			processedEventCopy.Cost = costDetails.FinalCost
 			processedEventCopy.Currency = match.Price.Currency
 
+			// Process overage billing if enabled
+			// This checks if accumulated cost meets threshold and creates invoice if needed
+			overageBillingService := NewOverageBillingService(s.ServiceParams, s.processedEventRepo)
+			if err := overageBillingService.ProcessEventOverage(ctx, processedEventCopy, sub); err != nil {
+				s.Logger.Errorw("failed to process overage billing",
+					"error", err,
+					"event_id", event.ID,
+					"subscription_id", sub.ID,
+				)
+				// Don't fail event processing - overage billing is best-effort
+			}
+
 			processedEventsPerSub = append(processedEventsPerSub, processedEventCopy)
 		}
 	}
