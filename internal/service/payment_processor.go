@@ -13,6 +13,7 @@ import (
 	ierr "github.com/flexprice/flexprice/internal/errors"
 	"github.com/flexprice/flexprice/internal/integration/nomod"
 	"github.com/flexprice/flexprice/internal/integration/razorpay"
+	"github.com/flexprice/flexprice/internal/integration/sslcommerz"
 	"github.com/flexprice/flexprice/internal/types"
 	webhookDto "github.com/flexprice/flexprice/internal/webhook/dto"
 	"github.com/samber/lo"
@@ -246,6 +247,8 @@ func (p *paymentProcessor) handlePaymentLinkCreation(ctx context.Context, paymen
 		return p.handleRazorpayPaymentLinkCreation(ctx, paymentObj, invoice)
 	case types.PaymentGatewayTypeNomod:
 		return p.handleNomodPaymentLinkCreation(ctx, paymentObj, invoice)
+	case types.PaymentGatewayTypeSSLCommerz:
+		return p.handleSSLCommerzPaymentLinkCreation(ctx, paymentObj, invoice)
 	default:
 		return ierr.NewError("unsupported payment gateway").
 			WithHint("Payment gateway not supported for payment links").
@@ -540,6 +543,116 @@ func (p *paymentProcessor) handleNomodPaymentLinkCreation(ctx context.Context, p
 	p.Logger.Infow("successfully created nomod payment link and updated status to pending",
 		"payment_id", paymentObj.ID,
 		"nomod_invoice_id", paymentLinkResp.ID,
+		"payment_url", paymentLinkResp.PaymentURL)
+
+	return nil
+}
+
+func (p *paymentProcessor) handleSSLCommerzPaymentLinkCreation(ctx context.Context, paymentObj *payment.Payment, inv *invoice.Invoice) error {
+	// Extract success URL, fail URL, and cancel URL from metadata
+	successURL := ""
+	failURL := ""
+	cancelURL := ""
+
+	if paymentObj.Metadata != nil {
+		if url, exists := paymentObj.Metadata["success_url"]; exists {
+			successURL = url
+		}
+		if url, exists := paymentObj.Metadata["fail_url"]; exists {
+			failURL = url
+		}
+		if url, exists := paymentObj.Metadata["cancel_url"]; exists {
+			cancelURL = url
+		}
+	}
+
+	// Get customer details for the payment form
+	customerService := NewCustomerService(p.ServiceParams)
+	customer, err := customerService.GetCustomer(ctx, inv.CustomerID)
+	if err != nil {
+		p.Logger.Warnw("failed to get customer details for SSLCommerz payment",
+			"customer_id", inv.CustomerID,
+			"error", err)
+	}
+
+	// Build customer details
+	customerName := ""
+	customerEmail := ""
+	customerPhone := ""
+	if customer != nil {
+		customerName = customer.Name
+		customerEmail = customer.Email
+	}
+
+	// Convert to SSLCommerz payment link request
+	paymentLinkReq := &sslcommerz.CreatePaymentLinkRequest{
+		InvoiceID:        paymentObj.DestinationID,
+		CustomerID:       inv.CustomerID,
+		Amount:           paymentObj.Amount,
+		Currency:         paymentObj.Currency,
+		SuccessURL:       successURL,
+		FailURL:          failURL,
+		CancelURL:        cancelURL,
+		PaymentID:        paymentObj.ID,
+		EnvironmentID:    types.GetEnvironmentID(ctx),
+		CustomerName:     customerName,
+		CustomerEmail:    customerEmail,
+		CustomerPhone:    customerPhone,
+		CustomerAddress:  "N/A",
+		CustomerCity:     "N/A",
+		CustomerPostcode: "0000",
+		CustomerCountry:  "Bangladesh",
+	}
+
+	// Get SSLCommerz integration for creating payment link
+	sslcommerzIntegration, err := p.IntegrationFactory.GetSSLCommerzIntegration(ctx)
+	if err != nil {
+		return ierr.WithError(err).
+			WithHint("Failed to get SSLCommerz integration").
+			Mark(ierr.ErrSystem)
+	}
+
+	invoiceService := NewInvoiceService(p.ServiceParams)
+
+	paymentLinkResp, err := sslcommerzIntegration.PaymentSvc.CreatePaymentLink(ctx, paymentLinkReq, customerService, invoiceService)
+	if err != nil {
+		// If SSLCommerz API fails, keep payment status as INITIATED and return error
+		p.Logger.Errorw("failed to create payment link via SSLCommerz",
+			"error", err,
+			"payment_id", paymentObj.ID,
+			"invoice_id", paymentObj.DestinationID)
+		return err
+	}
+
+	// If SSLCommerz API succeeds, update payment status to PENDING
+	paymentObj.PaymentStatus = types.PaymentStatusPending
+
+	// Update payment with gateway information
+	paymentObj.GatewayTrackingID = &paymentLinkResp.SessionKey // Store session_key in gateway_tracking_id
+	if paymentObj.GatewayMetadata == nil {
+		paymentObj.GatewayMetadata = types.Metadata{}
+	}
+	// Merge with existing gateway metadata
+	paymentObj.GatewayMetadata["payment_url"] = paymentLinkResp.PaymentURL
+	paymentObj.GatewayMetadata["gateway"] = string(types.PaymentGatewayTypeSSLCommerz)
+	paymentObj.GatewayMetadata["session_key"] = paymentLinkResp.SessionKey
+	if paymentLinkResp.RedirectGatewayURL != "" {
+		paymentObj.GatewayMetadata["redirect_gateway_url"] = paymentLinkResp.RedirectGatewayURL
+	}
+
+	// Update the payment record
+	if err := p.PaymentRepo.Update(ctx, paymentObj); err != nil {
+		return ierr.WithError(err).
+			WithHint("Failed to update payment with payment link information").
+			WithReportableDetails(map[string]interface{}{
+				"payment_id": paymentObj.ID,
+			}).
+			Mark(ierr.ErrDatabase)
+	}
+
+	p.Logger.Infow("successfully created sslcommerz payment link and updated status to pending",
+		"payment_id", paymentObj.ID,
+		"session_key", paymentLinkResp.SessionKey,
 		"payment_url", paymentLinkResp.PaymentURL)
 
 	return nil

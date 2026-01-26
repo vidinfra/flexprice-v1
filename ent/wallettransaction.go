@@ -44,6 +44,10 @@ type WalletTransaction struct {
 	Amount decimal.Decimal `json:"amount,omitempty"`
 	// CreditAmount holds the value of the "credit_amount" field.
 	CreditAmount decimal.Decimal `json:"credit_amount,omitempty"`
+	// BalanceBefore holds the value of the "balance_before" field.
+	BalanceBefore decimal.Decimal `json:"balance_before,omitempty"`
+	// BalanceAfter holds the value of the "balance_after" field.
+	BalanceAfter decimal.Decimal `json:"balance_after,omitempty"`
 	// CreditBalanceBefore holds the value of the "credit_balance_before" field.
 	CreditBalanceBefore decimal.Decimal `json:"credit_balance_before,omitempty"`
 	// CreditBalanceAfter holds the value of the "credit_balance_after" field.
@@ -80,7 +84,7 @@ func (*WalletTransaction) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case wallettransaction.FieldMetadata:
 			values[i] = new([]byte)
-		case wallettransaction.FieldAmount, wallettransaction.FieldCreditAmount, wallettransaction.FieldCreditBalanceBefore, wallettransaction.FieldCreditBalanceAfter, wallettransaction.FieldCreditsAvailable:
+		case wallettransaction.FieldAmount, wallettransaction.FieldCreditAmount, wallettransaction.FieldBalanceBefore, wallettransaction.FieldBalanceAfter, wallettransaction.FieldCreditBalanceBefore, wallettransaction.FieldCreditBalanceAfter, wallettransaction.FieldCreditsAvailable:
 			values[i] = new(decimal.Decimal)
 		case wallettransaction.FieldPriority:
 			values[i] = new(sql.NullInt64)
@@ -180,6 +184,18 @@ func (wt *WalletTransaction) assignValues(columns []string, values []any) error 
 				return fmt.Errorf("unexpected type %T for field credit_amount", values[i])
 			} else if value != nil {
 				wt.CreditAmount = *value
+			}
+		case wallettransaction.FieldBalanceBefore:
+			if value, ok := values[i].(*decimal.Decimal); !ok {
+				return fmt.Errorf("unexpected type %T for field balance_before", values[i])
+			} else if value != nil {
+				wt.BalanceBefore = *value
+			}
+		case wallettransaction.FieldBalanceAfter:
+			if value, ok := values[i].(*decimal.Decimal); !ok {
+				return fmt.Errorf("unexpected type %T for field balance_after", values[i])
+			} else if value != nil {
+				wt.BalanceAfter = *value
 			}
 		case wallettransaction.FieldCreditBalanceBefore:
 			if value, ok := values[i].(*decimal.Decimal); !ok {
@@ -336,6 +352,12 @@ func (wt *WalletTransaction) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("credit_amount=")
 	builder.WriteString(fmt.Sprintf("%v", wt.CreditAmount))
+	builder.WriteString(", ")
+	builder.WriteString("balance_before=")
+	builder.WriteString(fmt.Sprintf("%v", wt.BalanceBefore))
+	builder.WriteString(", ")
+	builder.WriteString("balance_after=")
+	builder.WriteString(fmt.Sprintf("%v", wt.BalanceAfter))
 	builder.WriteString(", ")
 	builder.WriteString("credit_balance_before=")
 	builder.WriteString(fmt.Sprintf("%v", wt.CreditBalanceBefore))

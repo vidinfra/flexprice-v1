@@ -148,26 +148,26 @@ func runBulkReprocessEventsCommand() error {
 func main() {
 	// Define command line flags
 	var (
-		listCommands       bool
-		cmdName            string
-		email              string
-		tenant             string
-		metersFile         string
-		plansFile          string
-		tenantID           string
-		userID             string
-		password           string
-		environmentID      string
-		filePath           string
-		apiKey             string
-		externalCustomerID string
-		eventName          string
-		startTime          string
-		endTime            string
-		batchSize          string
-		dryRun             string
-		planID             string
-		addonID            string
+		listCommands        bool
+		cmdName             string
+		email               string
+		tenant              string
+		metersFile          string
+		plansFile           string
+		tenantID            string
+		userID              string
+		password            string
+		environmentID       string
+		filePath            string
+		apiKey              string
+		externalCustomerID  string
+		eventName           string
+		startTime           string
+		endTime             string
+		batchSize           string
+		dryRun              string
+		planID  string
+		addonID string
 	)
 
 	flag.BoolVar(&listCommands, "list", false, "List all available commands")

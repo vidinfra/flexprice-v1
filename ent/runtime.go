@@ -1652,18 +1652,22 @@ func init() {
 	subscriptionDescCollectionMethod := subscriptionFields[27].Descriptor()
 	// subscription.DefaultCollectionMethod holds the default value on creation for the collection_method field.
 	subscription.DefaultCollectionMethod = types.CollectionMethod(subscriptionDescCollectionMethod.Default.(string))
+	// subscriptionDescInvoiceCadence is the schema descriptor for invoice_cadence field.
+	subscriptionDescInvoiceCadence := subscriptionFields[29].Descriptor()
+	// subscription.DefaultInvoiceCadence holds the default value on creation for the invoice_cadence field.
+	subscription.DefaultInvoiceCadence = types.InvoiceCadence(subscriptionDescInvoiceCadence.Default.(string))
 	// subscriptionDescCustomerTimezone is the schema descriptor for customer_timezone field.
-	subscriptionDescCustomerTimezone := subscriptionFields[29].Descriptor()
+	subscriptionDescCustomerTimezone := subscriptionFields[30].Descriptor()
 	// subscription.DefaultCustomerTimezone holds the default value on creation for the customer_timezone field.
 	subscription.DefaultCustomerTimezone = subscriptionDescCustomerTimezone.Default.(string)
 	// subscriptionDescProrationBehavior is the schema descriptor for proration_behavior field.
-	subscriptionDescProrationBehavior := subscriptionFields[30].Descriptor()
+	subscriptionDescProrationBehavior := subscriptionFields[31].Descriptor()
 	// subscription.DefaultProrationBehavior holds the default value on creation for the proration_behavior field.
 	subscription.DefaultProrationBehavior = types.ProrationBehavior(subscriptionDescProrationBehavior.Default.(string))
 	// subscription.ProrationBehaviorValidator is a validator for the "proration_behavior" field. It is called by the builders before save.
 	subscription.ProrationBehaviorValidator = subscriptionDescProrationBehavior.Validators[0].(func(string) error)
 	// subscriptionDescEnableTrueUp is the schema descriptor for enable_true_up field.
-	subscriptionDescEnableTrueUp := subscriptionFields[31].Descriptor()
+	subscriptionDescEnableTrueUp := subscriptionFields[32].Descriptor()
 	// subscription.DefaultEnableTrueUp holds the default value on creation for the enable_true_up field.
 	subscription.DefaultEnableTrueUp = subscriptionDescEnableTrueUp.Default.(bool)
 	subscriptionlineitemMixin := schema.SubscriptionLineItem{}.Mixin()
@@ -2201,11 +2205,11 @@ func init() {
 	// wallettransaction.TypeValidator is a validator for the "type" field. It is called by the builders before save.
 	wallettransaction.TypeValidator = wallettransactionDescType.Validators[0].(func(string) error)
 	// wallettransactionDescTransactionStatus is the schema descriptor for transaction_status field.
-	wallettransactionDescTransactionStatus := wallettransactionFields[12].Descriptor()
+	wallettransactionDescTransactionStatus := wallettransactionFields[14].Descriptor()
 	// wallettransaction.DefaultTransactionStatus holds the default value on creation for the transaction_status field.
 	wallettransaction.DefaultTransactionStatus = types.TransactionStatus(wallettransactionDescTransactionStatus.Default.(string))
 	// wallettransactionDescTransactionReason is the schema descriptor for transaction_reason field.
-	wallettransactionDescTransactionReason := wallettransactionFields[17].Descriptor()
+	wallettransactionDescTransactionReason := wallettransactionFields[19].Descriptor()
 	// wallettransaction.DefaultTransactionReason holds the default value on creation for the transaction_reason field.
 	wallettransaction.DefaultTransactionReason = types.TransactionReason(wallettransactionDescTransactionReason.Default.(string))
 }

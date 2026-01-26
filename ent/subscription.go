@@ -91,6 +91,8 @@ type Subscription struct {
 	CollectionMethod types.CollectionMethod `json:"collection_method,omitempty"`
 	// Gateway payment method ID for this subscription
 	GatewayPaymentMethodID string `json:"gateway_payment_method_id,omitempty"`
+	// Invoice cadence for this subscription
+	InvoiceCadence types.InvoiceCadence `json:"invoice_cadence,omitempty"`
 	// CustomerTimezone holds the value of the "customer_timezone" field.
 	CustomerTimezone string `json:"customer_timezone,omitempty"`
 	// ProrationBehavior holds the value of the "proration_behavior" field.
@@ -204,7 +206,7 @@ func (*Subscription) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullBool)
 		case subscription.FieldBillingPeriodCount, subscription.FieldVersion:
 			values[i] = new(sql.NullInt64)
-		case subscription.FieldID, subscription.FieldTenantID, subscription.FieldStatus, subscription.FieldCreatedBy, subscription.FieldUpdatedBy, subscription.FieldEnvironmentID, subscription.FieldLookupKey, subscription.FieldCustomerID, subscription.FieldPlanID, subscription.FieldSubscriptionStatus, subscription.FieldCurrency, subscription.FieldBillingCadence, subscription.FieldBillingPeriod, subscription.FieldPauseStatus, subscription.FieldActivePauseID, subscription.FieldBillingCycle, subscription.FieldPaymentBehavior, subscription.FieldCollectionMethod, subscription.FieldGatewayPaymentMethodID, subscription.FieldCustomerTimezone, subscription.FieldProrationBehavior, subscription.FieldInvoicingCustomerID:
+		case subscription.FieldID, subscription.FieldTenantID, subscription.FieldStatus, subscription.FieldCreatedBy, subscription.FieldUpdatedBy, subscription.FieldEnvironmentID, subscription.FieldLookupKey, subscription.FieldCustomerID, subscription.FieldPlanID, subscription.FieldSubscriptionStatus, subscription.FieldCurrency, subscription.FieldBillingCadence, subscription.FieldBillingPeriod, subscription.FieldPauseStatus, subscription.FieldActivePauseID, subscription.FieldBillingCycle, subscription.FieldPaymentBehavior, subscription.FieldCollectionMethod, subscription.FieldGatewayPaymentMethodID, subscription.FieldInvoiceCadence, subscription.FieldCustomerTimezone, subscription.FieldProrationBehavior, subscription.FieldInvoicingCustomerID:
 			values[i] = new(sql.NullString)
 		case subscription.FieldCreatedAt, subscription.FieldUpdatedAt, subscription.FieldBillingAnchor, subscription.FieldStartDate, subscription.FieldEndDate, subscription.FieldCurrentPeriodStart, subscription.FieldCurrentPeriodEnd, subscription.FieldCancelledAt, subscription.FieldCancelAt, subscription.FieldTrialStart, subscription.FieldTrialEnd:
 			values[i] = new(sql.NullTime)
@@ -449,6 +451,12 @@ func (s *Subscription) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				s.GatewayPaymentMethodID = value.String
 			}
+		case subscription.FieldInvoiceCadence:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field invoice_cadence", values[i])
+			} else if value.Valid {
+				s.InvoiceCadence = types.InvoiceCadence(value.String)
+			}
 		case subscription.FieldCustomerTimezone:
 			if value, ok := values[i].(*sql.NullString); !ok {
 				return fmt.Errorf("unexpected type %T for field customer_timezone", values[i])
@@ -665,6 +673,9 @@ func (s *Subscription) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("gateway_payment_method_id=")
 	builder.WriteString(s.GatewayPaymentMethodID)
+	builder.WriteString(", ")
+	builder.WriteString("invoice_cadence=")
+	builder.WriteString(fmt.Sprintf("%v", s.InvoiceCadence))
 	builder.WriteString(", ")
 	builder.WriteString("customer_timezone=")
 	builder.WriteString(s.CustomerTimezone)

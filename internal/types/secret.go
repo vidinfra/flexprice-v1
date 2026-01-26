@@ -34,8 +34,9 @@ const (
 	SecretProviderHubSpot    SecretProvider = "hubspot"
 	SecretProviderRazorpay   SecretProvider = "razorpay"
 	SecretProviderChargebee  SecretProvider = "chargebee"
-	SecretProviderQuickBooks SecretProvider = "quickbooks"
-	SecretProviderNomod      SecretProvider = "nomod"
+	SecretProviderQuickBooks  SecretProvider = "quickbooks"
+	SecretProviderNomod       SecretProvider = "nomod"
+	SecretProviderSSLCommerz  SecretProvider = "sslcommerz"
 )
 
 func (p SecretProvider) Validate() error {
@@ -48,6 +49,7 @@ func (p SecretProvider) Validate() error {
 		SecretProviderChargebee,
 		SecretProviderQuickBooks,
 		SecretProviderNomod,
+		SecretProviderSSLCommerz,
 	}
 	if !lo.Contains(allowedSecretProviders, p) {
 		return ierr.NewError("invalid secret provider").

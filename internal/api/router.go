@@ -70,7 +70,7 @@ func NewRouter(handlers Handlers, cfg *config.Configuration, logger *logger.Logg
 	router := gin.Default()
 	router.Use(
 		middleware.RequestIDMiddleware,
-		middleware.CORSMiddleware,
+		middleware.CORSMiddleware(cfg.Server.AllowedOrigins),
 		middleware.SentryMiddleware(cfg),    // Add Sentry middleware
 		middleware.PyroscopeMiddleware(cfg), // Add Pyroscope middleware
 	)
@@ -509,6 +509,8 @@ func NewRouter(handlers Handlers, cfg *config.Configuration, logger *logger.Logg
 		webhooks.POST("/quickbooks/:tenant_id/:environment_id", handlers.Webhook.HandleQuickBooksWebhook)
 		// Nomod webhook endpoint: POST /v1/webhooks/nomod/{tenant_id}/{environment_id}
 		webhooks.POST("/nomod/:tenant_id/:environment_id", handlers.Webhook.HandleNomodWebhook)
+		// SSLCommerz IPN webhook endpoint: POST /v1/webhooks/sslcommerz/{tenant_id}/{environment_id}
+		webhooks.POST("/sslcommerz/:tenant_id/:environment_id", handlers.Webhook.HandleSSLCommerzWebhook)
 	}
 
 	// Cron routes

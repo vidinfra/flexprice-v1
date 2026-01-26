@@ -436,6 +436,20 @@ func (su *SubscriptionUpdate) ClearGatewayPaymentMethodID() *SubscriptionUpdate 
 	return su
 }
 
+// SetInvoiceCadence sets the "invoice_cadence" field.
+func (su *SubscriptionUpdate) SetInvoiceCadence(tc types.InvoiceCadence) *SubscriptionUpdate {
+	su.mutation.SetInvoiceCadence(tc)
+	return su
+}
+
+// SetNillableInvoiceCadence sets the "invoice_cadence" field if the given value is not nil.
+func (su *SubscriptionUpdate) SetNillableInvoiceCadence(tc *types.InvoiceCadence) *SubscriptionUpdate {
+	if tc != nil {
+		su.SetInvoiceCadence(*tc)
+	}
+	return su
+}
+
 // SetCustomerTimezone sets the "customer_timezone" field.
 func (su *SubscriptionUpdate) SetCustomerTimezone(s string) *SubscriptionUpdate {
 	su.mutation.SetCustomerTimezone(s)
@@ -877,6 +891,9 @@ func (su *SubscriptionUpdate) sqlSave(ctx context.Context) (n int, err error) {
 	}
 	if su.mutation.GatewayPaymentMethodIDCleared() {
 		_spec.ClearField(subscription.FieldGatewayPaymentMethodID, field.TypeString)
+	}
+	if value, ok := su.mutation.InvoiceCadence(); ok {
+		_spec.SetField(subscription.FieldInvoiceCadence, field.TypeString, value)
 	}
 	if value, ok := su.mutation.CustomerTimezone(); ok {
 		_spec.SetField(subscription.FieldCustomerTimezone, field.TypeString, value)
@@ -1602,6 +1619,20 @@ func (suo *SubscriptionUpdateOne) ClearGatewayPaymentMethodID() *SubscriptionUpd
 	return suo
 }
 
+// SetInvoiceCadence sets the "invoice_cadence" field.
+func (suo *SubscriptionUpdateOne) SetInvoiceCadence(tc types.InvoiceCadence) *SubscriptionUpdateOne {
+	suo.mutation.SetInvoiceCadence(tc)
+	return suo
+}
+
+// SetNillableInvoiceCadence sets the "invoice_cadence" field if the given value is not nil.
+func (suo *SubscriptionUpdateOne) SetNillableInvoiceCadence(tc *types.InvoiceCadence) *SubscriptionUpdateOne {
+	if tc != nil {
+		suo.SetInvoiceCadence(*tc)
+	}
+	return suo
+}
+
 // SetCustomerTimezone sets the "customer_timezone" field.
 func (suo *SubscriptionUpdateOne) SetCustomerTimezone(s string) *SubscriptionUpdateOne {
 	suo.mutation.SetCustomerTimezone(s)
@@ -2073,6 +2104,9 @@ func (suo *SubscriptionUpdateOne) sqlSave(ctx context.Context) (_node *Subscript
 	}
 	if suo.mutation.GatewayPaymentMethodIDCleared() {
 		_spec.ClearField(subscription.FieldGatewayPaymentMethodID, field.TypeString)
+	}
+	if value, ok := suo.mutation.InvoiceCadence(); ok {
+		_spec.SetField(subscription.FieldInvoiceCadence, field.TypeString, value)
 	}
 	if value, ok := suo.mutation.CustomerTimezone(); ok {
 		_spec.SetField(subscription.FieldCustomerTimezone, field.TypeString, value)
