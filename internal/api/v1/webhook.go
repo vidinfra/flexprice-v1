@@ -970,12 +970,12 @@ func (h *WebhookHandler) HandleSSLCommerzWebhook(c *gin.Context) {
 		"message": "Webhook received",
 	})
 
-	bgCtx := context.Background()
+	bgCtx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	bgCtx = types.SetTenantID(bgCtx, tenantID)
 	bgCtx = types.SetEnvironmentID(bgCtx, environmentID)
 
 	go func() {
-
+		defer cancel()
 		defer func() {
 			if r := recover(); r != nil {
 				h.logger.Errorw("panic recovered in SSLCommerz webhook processing",
