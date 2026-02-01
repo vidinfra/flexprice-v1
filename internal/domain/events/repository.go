@@ -50,6 +50,10 @@ type ProcessedEventRepository interface {
 
 	// GetDetailedUsageAnalytics provides comprehensive usage analytics with filtering, grouping, and time-series data
 	GetDetailedUsageAnalytics(ctx context.Context, params *UsageAnalyticsParams) ([]*DetailedUsageAnalytic, error)
+
+	// GetCurrentMaxQuantity returns the current maximum quantity for a meter in a billing period
+	// Used for MAX aggregation to calculate incremental cost (only charge when new max is reached)
+	GetCurrentMaxQuantity(ctx context.Context, tenantID, environmentID, subscriptionID, meterID string, periodID uint64) (decimal.Decimal, error)
 }
 
 // Additional types needed for the new methods

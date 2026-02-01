@@ -430,6 +430,40 @@ func (r *ProcessedEventRepository) GetPeriodCost(ctx context.Context, tenantID, 
 	return cost, nil
 }
 
+// GetCurrentMaxQuantity returns the current maximum quantity for a meter in a billing period
+// Used for MAX aggregation to calculate incremental cost (only charge when new max is reached)
+func (r *ProcessedEventRepository) GetCurrentMaxQuantity(ctx context.Context, tenantID, environmentID, subscriptionID, meterID string, periodID uint64) (decimal.Decimal, error) {
+	query := `
+		SELECT MAX(qty_total) AS max_qty
+		FROM events_processed FINAL
+		WHERE tenant_id = ?
+		AND environment_id = ?
+		AND subscription_id = ?
+		AND meter_id = ?
+		AND period_id = ?
+		AND sign > 0
+	`
+
+	var maxQty decimal.Decimal
+	err := r.store.GetConn().QueryRow(ctx, query, tenantID, environmentID, subscriptionID, meterID, periodID).Scan(&maxQty)
+	if err != nil {
+		// If no rows found, return zero (no previous max)
+		if err.Error() == "sql: no rows in result set" {
+			return decimal.Zero, nil
+		}
+		return decimal.Zero, ierr.WithError(err).
+			WithHint("Failed to get current max quantity").
+			WithReportableDetails(map[string]interface{}{
+				"subscription_id": subscriptionID,
+				"meter_id":        meterID,
+				"period_id":       periodID,
+			}).
+			Mark(ierr.ErrDatabase)
+	}
+
+	return maxQty, nil
+}
+
 // GetPeriodFeatureTotals gets usage totals by feature for a subscription in a period
 func (r *ProcessedEventRepository) GetPeriodFeatureTotals(ctx context.Context, tenantID, environmentID, customerID, subscriptionID string, periodID uint64) ([]*events.PeriodFeatureTotal, error) {
 	query := `

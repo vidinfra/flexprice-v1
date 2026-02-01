@@ -319,6 +319,12 @@ func NewConfig() (*Configuration, error) {
 	}
 	cfg.Webhook.Tenants = tenantWebhookConfig
 
+	// Debug: log loaded tenant webhook config
+	fmt.Printf("DEBUG: Loaded %d tenant webhook configs\n", len(tenantWebhookConfig))
+	for tenantID, tenantCfg := range tenantWebhookConfig {
+		fmt.Printf("DEBUG: Tenant %s: enabled=%v, endpoint=%s\n", tenantID, tenantCfg.Enabled, tenantCfg.Endpoint)
+	}
+
 	// Alternative: try to parse user_env_mapping directly
 	userEnvMappingJSON := v.GetString("user_env_mapping")
 	if userEnvMappingJSON != "" {

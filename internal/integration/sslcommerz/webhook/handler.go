@@ -10,7 +10,6 @@ import (
 	"github.com/flexprice/flexprice/internal/logger"
 	"github.com/flexprice/flexprice/internal/types"
 	"github.com/samber/lo"
-	"github.com/shopspring/decimal"
 )
 
 // Handler handles SSLCommerz webhook events
@@ -259,32 +258,37 @@ func (h *Handler) handleSuccessfulPayment(
 
 	payment := payments.Items[0]
 
-	// Parse amount from IPN data
-	amount, err := decimal.NewFromString(ipnData.Amount)
-	if err != nil {
-		h.logger.Errorw("failed to parse payment amount",
-			"error", err,
-			"amount", ipnData.Amount)
-		amount = payment.Amount // Fall back to payment record amount
-	}
+	// IMPORTANT: Use the original payment amount (in original currency, e.g., USD)
+	// NOT the IPN amount which is in the local currency (e.g., BDT)
+	// The payment record stores the amount in the invoice's currency
+	amount := payment.Amount
 
-	// Reconcile invoice
+	h.logger.Infow("reconciling invoice with original payment amount",
+		"payment_id", payment.ID,
+		"invoice_id", payment.DestinationID,
+		"original_amount", amount.String(),
+		"original_currency", payment.Currency,
+		"ipn_amount", ipnData.Amount,
+		"ipn_currency", ipnData.Currency)
+
+	// Reconcile invoice with the original payment amount (USD), not the IPN amount (BDT)
+	// NOTE: ReconcilePaymentStatus already handles wallet credit for wallet top-up invoices
+	// by checking for wallet_transaction_id in invoice metadata and calling
+	// CompletePurchasedCreditTransactionWithRetry
 	err = services.InvoiceService.ReconcilePaymentStatus(ctx, payment.DestinationID, types.PaymentStatusSucceeded, &amount)
 	if err != nil {
 		h.logger.Errorw("failed to reconcile invoice after SSLCommerz payment success",
 			"error", err,
 			"payment_id", payment.ID,
 			"invoice_id", payment.DestinationID)
-		// Don't return error - continue with wallet top-up
+		// Don't return error - payment status was already updated
 	} else {
 		h.logger.Infow("successfully reconciled invoice after SSLCommerz payment",
 			"payment_id", payment.ID,
 			"invoice_id", payment.DestinationID,
-			"amount", amount.String())
+			"amount", amount.String(),
+			"currency", payment.Currency)
 	}
-
-	// Note: Wallet top-up is handled by the payment service reconciliation flow
-	// or by a separate wallet service if needed
 
 	return nil
 }

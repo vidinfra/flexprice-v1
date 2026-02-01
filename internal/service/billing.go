@@ -1212,12 +1212,99 @@ func (s *billingService) CalculateAllCharges(
 		return nil, err
 	}
 
+	// Deduct already-invoiced overage amounts to prevent double billing
+	// Overage invoices are created in real-time and should be subtracted from arrear billing
+	overageInvoiced, err := s.getOverageInvoicedAmount(ctx, sub.ID, periodStart, periodEnd)
+	if err != nil {
+		s.Logger.Warnw("failed to get overage invoiced amount, proceeding without deduction",
+			"error", err,
+			"subscription_id", sub.ID)
+		// Don't fail billing, proceed without deduction
+		overageInvoiced = decimal.Zero
+	}
+
+	// Adjust usage total by subtracting overage already invoiced
+	adjustedUsageTotal := usageTotal.Sub(overageInvoiced)
+	if adjustedUsageTotal.LessThan(decimal.Zero) {
+		// Overage exceeds calculated usage (shouldn't happen, but protect against it)
+		s.Logger.Warnw("overage invoiced exceeds usage total, setting usage to zero",
+			"subscription_id", sub.ID,
+			"usage_total", usageTotal.String(),
+			"overage_invoiced", overageInvoiced.String())
+		adjustedUsageTotal = decimal.Zero
+	}
+
+	// If there was an overage deduction, add a credit line item to show it
+	if overageInvoiced.GreaterThan(decimal.Zero) {
+		s.Logger.Infow("deducting overage already invoiced from arrear billing",
+			"subscription_id", sub.ID,
+			"usage_total", usageTotal.String(),
+			"overage_invoiced", overageInvoiced.String(),
+			"adjusted_usage_total", adjustedUsageTotal.String())
+
+		// Add a negative line item to show the overage credit
+		overageCreditLineItem := dto.CreateInvoiceLineItemRequest{
+			DisplayName: lo.ToPtr("Overage Already Invoiced (Credit)"),
+			Amount:      overageInvoiced.Neg(), // Negative amount for credit
+			Quantity:    decimal.NewFromInt(1),
+			PriceType:   lo.ToPtr(string(types.PRICE_TYPE_USAGE)),
+			PeriodStart: lo.ToPtr(periodStart),
+			PeriodEnd:   lo.ToPtr(periodEnd),
+			Metadata: types.Metadata{
+				"line_item_type":  "overage_credit",
+				"subscription_id": sub.ID,
+			},
+		}
+		usageCharges = append(usageCharges, overageCreditLineItem)
+	}
+
 	return &BillingCalculationResult{
 		FixedCharges: fixedCharges,
 		UsageCharges: usageCharges,
-		TotalAmount:  fixedTotal.Add(usageTotal),
+		TotalAmount:  fixedTotal.Add(adjustedUsageTotal),
 		Currency:     sub.Currency,
 	}, nil
+}
+
+// getOverageInvoicedAmount gets the total amount already invoiced via real-time overage billing
+// for a subscription within a billing period. This prevents double-billing during arrear invoicing.
+func (s *billingService) getOverageInvoicedAmount(
+	ctx context.Context,
+	subscriptionID string,
+	periodStart,
+	periodEnd time.Time,
+) (decimal.Decimal, error) {
+	// Query ONE_OFF invoices for this subscription within the period
+	// that have billing_type=overage in metadata
+	filter := &types.InvoiceFilter{
+		QueryFilter: &types.QueryFilter{
+			Status: lo.ToPtr(types.StatusPublished),
+		},
+		TimeRangeFilter: &types.TimeRangeFilter{
+			StartTime: lo.ToPtr(periodStart),
+			EndTime:   lo.ToPtr(periodEnd),
+		},
+		SubscriptionID: subscriptionID,
+		InvoiceType:    types.InvoiceTypeOneOff,
+		InvoiceStatus:  []types.InvoiceStatus{types.InvoiceStatusDraft, types.InvoiceStatusFinalized},
+	}
+
+	invoices, err := s.InvoiceRepo.List(ctx, filter)
+	if err != nil {
+		return decimal.Zero, err
+	}
+
+	// Sum up amounts from overage invoices (identified by metadata)
+	totalOverage := decimal.Zero
+	for _, inv := range invoices {
+		if inv.Metadata != nil {
+			if billingType, ok := inv.Metadata["billing_type"]; ok && billingType == "overage" {
+				totalOverage = totalOverage.Add(inv.AmountDue)
+			}
+		}
+	}
+
+	return totalOverage, nil
 }
 
 func (s *billingService) calculateAllChargesForPreview(

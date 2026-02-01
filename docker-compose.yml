@@ -141,6 +141,7 @@ services:
       - FLEXPRICE_DEPLOYMENT_MODE=api
       # Override config.yaml settings for containerized environment
       - FLEXPRICE_POSTGRES_HOST=postgres
+      - FLEXPRICE_POSTGRES_READER_HOST=postgres
       - FLEXPRICE_KAFKA_BROKERS=kafka:9092
       - FLEXPRICE_CLICKHOUSE_ADDRESS=clickhouse:9000
       - FLEXPRICE_TEMPORAL_ADDRESS=temporal:7233
@@ -163,6 +164,7 @@ services:
       - FLEXPRICE_DEPLOYMENT_MODE=consumer
       # Override config.yaml settings for containerized environment
       - FLEXPRICE_POSTGRES_HOST=postgres
+      - FLEXPRICE_POSTGRES_READER_HOST=postgres
       - FLEXPRICE_KAFKA_BROKERS=kafka:9092
       - FLEXPRICE_CLICKHOUSE_ADDRESS=clickhouse:9000
       - FLEXPRICE_TEMPORAL_ADDRESS=temporal:7233
@@ -185,6 +187,7 @@ services:
       - FLEXPRICE_DEPLOYMENT_MODE=temporal_worker
       # Override config.yaml settings for containerized environment
       - FLEXPRICE_POSTGRES_HOST=postgres
+      - FLEXPRICE_POSTGRES_READER_HOST=postgres
       - FLEXPRICE_KAFKA_BROKERS=kafka:9092
       - FLEXPRICE_CLICKHOUSE_ADDRESS=clickhouse:9000
       - FLEXPRICE_TEMPORAL_ADDRESS=temporal:7233

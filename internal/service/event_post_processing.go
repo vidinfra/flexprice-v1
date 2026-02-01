@@ -381,7 +381,7 @@ func (s *eventPostProcessingService) prepareProcessedEvents(ctx context.Context,
 	filter := types.NewSubscriptionFilter()
 	filter.CustomerID = customer.ID
 	filter.WithLineItems = true
-	filter.Expand = lo.ToPtr(string(types.ExpandPrices) + "," + string(types.ExpandMeters) + "," + string(types.ExpandFeatures))
+	filter.Expand = lo.ToPtr(string(types.ExpandPrices) + "," + string(types.ExpandMeters))
 	filter.SubscriptionStatus = []types.SubscriptionStatus{
 		types.SubscriptionStatusActive,
 		types.SubscriptionStatusTrialing,
@@ -671,10 +671,55 @@ func (s *eventPostProcessingService) prepareProcessedEvents(ctx context.Context,
 			tierSnapshot := decimal.Zero
 			processedEventCopy.TierSnapshot = tierSnapshot
 
+			// For MAX aggregation, we only charge for incremental increases
+			// i.e., only when the new value exceeds the current max
+			var costBillableQty = billableQty
+			if match.Meter.Aggregation.Type == types.AggregationMax {
+				currentMax, err := s.processedEventRepo.GetCurrentMaxQuantity(
+					ctx,
+					event.TenantID,
+					event.EnvironmentID,
+					sub.ID,
+					match.Meter.ID,
+					periodID,
+				)
+				if err != nil {
+					s.Logger.Errorw("failed to get current max quantity for MAX aggregation",
+						"error", err,
+						"event_id", event.ID,
+						"meter_id", match.Meter.ID,
+						"subscription_id", sub.ID,
+						"period_id", periodID,
+					)
+					// Continue with full quantity on error to avoid losing charges
+				} else {
+					// Only charge for the incremental delta above current max
+					if quantity.GreaterThan(currentMax) {
+						costBillableQty = quantity.Sub(currentMax)
+						s.Logger.Debugw("MAX aggregation: new max reached, charging incremental delta",
+							"event_id", event.ID,
+							"meter_id", match.Meter.ID,
+							"current_max", currentMax.String(),
+							"new_value", quantity.String(),
+							"delta_charged", costBillableQty.String(),
+						)
+					} else {
+						// New value is not higher than current max, no charge
+						costBillableQty = decimal.Zero
+						s.Logger.Debugw("MAX aggregation: value not higher than current max, no charge",
+							"event_id", event.ID,
+							"meter_id", match.Meter.ID,
+							"current_max", currentMax.String(),
+							"new_value", quantity.String(),
+						)
+					}
+				}
+			}
+
 			// Calculate cost details using the price service
 			// since per event price can be very small, we don't round the cost
 			priceService := NewPriceService(s.ServiceParams)
-			costDetails := priceService.CalculateCostWithBreakup(ctx, match.Price, billableQty, false)
+			costDetails := priceService.CalculateCostWithBreakup(ctx, match.Price, costBillableQty, false)
 
 			// Set cost details on the processed event
 			processedEventCopy.UnitCost = costDetails.EffectiveUnitCost
@@ -712,7 +757,7 @@ func (s *eventPostProcessingService) prepareProcessedEvents(ctx context.Context,
 
 // isSupportedAggregationType checks if the aggregation type is supported for post-processing
 func (s *eventPostProcessingService) isSupportedAggregationType(agg types.AggregationType) bool {
-	return agg == types.AggregationCount || agg == types.AggregationSum
+	return agg == types.AggregationCount || agg == types.AggregationSum || agg == types.AggregationMax
 }
 
 // isSupportedBillingModel checks if the billing model is supported for post-processing
@@ -823,21 +868,23 @@ func (s *eventPostProcessingService) extractQuantityFromEvent(
 		// For count, always return 1 and empty string for field value
 		return decimal.NewFromInt(1), ""
 
-	case types.AggregationSum:
+	case types.AggregationSum, types.AggregationMax:
 		if meter.Aggregation.Field == "" {
-			s.Logger.Warnw("sum aggregation with empty field name",
+			s.Logger.Warnw("aggregation with empty field name",
 				"event_id", event.ID,
 				"meter_id", meter.ID,
+				"aggregation_type", meter.Aggregation.Type,
 			)
 			return decimal.Zero, ""
 		}
 
 		val, ok := event.Properties[meter.Aggregation.Field]
 		if !ok {
-			s.Logger.Warnw("property not found for sum aggregation",
+			s.Logger.Warnw("property not found for aggregation",
 				"event_id", event.ID,
 				"meter_id", meter.ID,
 				"field", meter.Aggregation.Field,
+				"aggregation_type", meter.Aggregation.Type,
 			)
 			return decimal.Zero, ""
 		}
@@ -919,12 +966,13 @@ func (s *eventPostProcessingService) extractQuantityFromEvent(
 		default:
 			// Try to convert to string representation
 			stringValue = fmt.Sprintf("%v", v)
-			s.Logger.Warnw("unknown type for sum aggregation - cannot convert to decimal",
+			s.Logger.Warnw("unknown type for aggregation - cannot convert to decimal",
 				"event_id", event.ID,
 				"meter_id", meter.ID,
 				"field", meter.Aggregation.Field,
 				"type", fmt.Sprintf("%T", v),
 				"value", stringValue,
+				"aggregation_type", meter.Aggregation.Type,
 			)
 			return decimal.Zero, stringValue
 		}
@@ -932,7 +980,7 @@ func (s *eventPostProcessingService) extractQuantityFromEvent(
 		return decimalValue, stringValue
 
 	default:
-		// We're only supporting COUNT and SUM for now
+		// We're only supporting COUNT, SUM, and MAX for now
 		s.Logger.Warnw("unsupported aggregation type",
 			"event_id", event.ID,
 			"meter_id", meter.ID,

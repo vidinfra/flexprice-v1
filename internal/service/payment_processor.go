@@ -686,8 +686,16 @@ func (p *paymentProcessor) handleCreditsPayment(ctx context.Context, paymentObj 
 			Mark(ierr.ErrInvalidOperation)
 	}
 
-	// Validate sufficient balance
-	if selectedWallet.Balance.LessThan(paymentObj.Amount) {
+	// Check if negative wallet balance is allowed (used for overage billing)
+	allowNegativeBalance := false
+	if paymentObj.Metadata != nil {
+		if val, ok := paymentObj.Metadata["allow_negative_wallet_balance"]; ok && val == "true" {
+			allowNegativeBalance = true
+		}
+	}
+
+	// Validate sufficient balance (skip if negative balance is allowed for overage billing)
+	if !allowNegativeBalance && selectedWallet.Balance.LessThan(paymentObj.Amount) {
 		return ierr.NewError("wallet balance is less than payment amount").
 			WithHint("Wallet balance is less than payment amount").
 			WithReportableDetails(map[string]interface{}{
@@ -699,13 +707,14 @@ func (p *paymentProcessor) handleCreditsPayment(ctx context.Context, paymentObj 
 
 	// Create wallet operation
 	operation := &wallet.WalletOperation{
-		WalletID:          selectedWallet.ID,
-		Type:              types.TransactionTypeDebit,
-		Amount:            paymentObj.Amount,
-		ReferenceType:     types.WalletTxReferenceTypePayment,
-		ReferenceID:       paymentObj.ID,
-		Description:       fmt.Sprintf("Payment for invoice %s", paymentObj.DestinationID),
-		TransactionReason: types.TransactionReasonInvoicePayment,
+		WalletID:             selectedWallet.ID,
+		Type:                 types.TransactionTypeDebit,
+		Amount:               paymentObj.Amount,
+		ReferenceType:        types.WalletTxReferenceTypePayment,
+		ReferenceID:          paymentObj.ID,
+		Description:          fmt.Sprintf("Payment for invoice %s", paymentObj.DestinationID),
+		TransactionReason:    types.TransactionReasonInvoicePayment,
+		AllowNegativeBalance: allowNegativeBalance,
 		Metadata: types.Metadata{
 			"payment_id":     paymentObj.ID,
 			"invoice_id":     paymentObj.DestinationID,

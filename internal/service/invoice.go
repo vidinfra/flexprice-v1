@@ -1384,6 +1384,15 @@ func (s *invoiceService) ReconcilePaymentStatus(ctx context.Context, id string, 
 			s.HandleIncompleteSubscriptionPayment(ctx, inv)
 		}
 
+		// For subscription updates (plan upgrades/changes), send subscription.updated webhook
+		if inv.BillingReason == string(types.InvoiceBillingReasonSubscriptionUpdate) && inv.SubscriptionID != nil {
+			s.Logger.Infow("subscription update payment succeeded, publishing webhook",
+				"invoice_id", inv.ID,
+				"subscription_id", *inv.SubscriptionID,
+				"billing_reason", inv.BillingReason)
+			s.publishInternalWebhookEvent(ctx, types.WebhookEventSubscriptionUpdated, *inv.SubscriptionID)
+		}
+
 	case types.PaymentStatusOverpaid:
 		// Handle additional payments to an already overpaid invoice
 		if amount != nil {
@@ -1415,6 +1424,12 @@ func (s *invoiceService) ReconcilePaymentStatus(ctx context.Context, id string, 
 
 	// Check if this invoice is for a purchased credit (has wallet_transaction_id in metadata)
 	// If so, complete the wallet transaction to credit the wallet
+	s.Logger.Infow("checking invoice metadata for wallet_transaction_id",
+		"invoice_id", inv.ID,
+		"has_metadata", inv.Metadata != nil,
+		"metadata", inv.Metadata,
+		"payment_status", status,
+	)
 	if inv.Metadata != nil {
 		if walletTransactionID, ok := inv.Metadata["wallet_transaction_id"]; ok && walletTransactionID != "" {
 			// Only complete the transaction if payment is fully succeeded

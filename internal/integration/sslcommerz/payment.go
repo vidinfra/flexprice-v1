@@ -195,7 +195,10 @@ func (s *PaymentService) CreatePaymentLink(
 		customerCountry = "Bangladesh"
 	}
 
-	// Build form data for SSLCommerz API
+	if req.Currency == "" {
+		req.Currency = "usd"
+	}
+
 	formData := &SSLCommerzFormData{
 		TotalAmount:     req.Amount.String(),
 		Currency:        strings.ToUpper(req.Currency),

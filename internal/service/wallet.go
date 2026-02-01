@@ -1451,7 +1451,8 @@ func (s *walletService) processDebitOperation(ctx context.Context, req *wallet.W
 		}
 	}
 
-	if totalAvailable.LessThan(req.CreditAmount) {
+	// Skip balance check if AllowNegativeBalance is set (used for overage billing)
+	if !req.AllowNegativeBalance && totalAvailable.LessThan(req.CreditAmount) {
 		return ierr.NewError("insufficient balance").
 			WithHint("Insufficient balance to process debit operation").
 			WithReportableDetails(map[string]interface{}{
@@ -1687,10 +1688,19 @@ func (s *walletService) GetWalletTransactionByID(ctx context.Context, transactio
 }
 
 func (s *walletService) publishInternalTransactionWebhookEvent(ctx context.Context, eventName string, transactionID string) {
+	tenantID := types.GetTenantID(ctx)
+	environmentID := types.GetEnvironmentID(ctx)
+
+	s.Logger.Infow("publishing internal transaction webhook event",
+		"event_name", eventName,
+		"transaction_id", transactionID,
+		"tenant_id", tenantID,
+		"environment_id", environmentID,
+	)
 
 	webhookPayload, err := json.Marshal(webhookDto.InternalTransactionEvent{
 		TransactionID: transactionID,
-		TenantID:      types.GetTenantID(ctx),
+		TenantID:      tenantID,
 	})
 
 	if err != nil {
@@ -2378,14 +2388,14 @@ func (s *walletService) CheckWalletBalanceAlert(ctx context.Context, req *wallet
 				"alert_enabled", w.AlertEnabled,
 				"event_id", req.ID,
 			)
-			// Trigger auto top-up if enabled
-			err := s.checkAutoTopup(ctx, w, lo.FromPtr(balance.RealTimeCreditBalance))
-			if err != nil {
-				s.Logger.Errorw("failed to trigger auto top-up",
-					"error", err,
-					"wallet_id", w.ID,
-				)
-			}
+			// NOTE: Auto top-up is handled by external service (api.tenbyte.com) via webhook
+			// err := s.checkAutoTopup(ctx, w, lo.FromPtr(balance.RealTimeCreditBalance))
+			// if err != nil {
+			// 	s.Logger.Errorw("failed to trigger auto top-up",
+			// 		"error", err,
+			// 		"wallet_id", w.ID,
+			// 	)
+			// }
 			continue
 		}
 
@@ -2615,15 +2625,15 @@ func (s *walletService) CheckWalletBalanceAlert(ctx context.Context, req *wallet
 			"event_id", req.ID,
 		)
 
-		// Check auto top-up
-		err = s.checkAutoTopup(ctx, w, lo.FromPtr(balance.RealTimeCreditBalance))
-		if err != nil {
-			s.Logger.Errorw("failed to trigger auto top-up",
-				"error", err,
-				"wallet_id", w.ID,
-			)
-			continue
-		}
+		// NOTE: Auto top-up is handled by external service (api.tenbyte.com) via webhook
+		// err = s.checkAutoTopup(ctx, w, lo.FromPtr(balance.RealTimeCreditBalance))
+		// if err != nil {
+		// 	s.Logger.Errorw("failed to trigger auto top-up",
+		// 		"error", err,
+		// 		"wallet_id", w.ID,
+		// 	)
+		// 	continue
+		// }
 	}
 	s.Logger.Infow("completed wallet balance alert check for customer",
 		"customer_id", req.CustomerID,

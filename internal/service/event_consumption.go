@@ -211,21 +211,18 @@ func (s *eventConsumptionService) processMessage(msg *message.Message) error {
 			Mark(ierr.ErrSystem)
 	}
 
-	// Publish event to post-processing service
-	// Only for the tenants that are forced to v1
-	if s.Config.FeatureFlag.ForceV1ForTenant != "" && event.TenantID == s.Config.FeatureFlag.ForceV1ForTenant {
-		if err := s.eventPostProcessingSvc.PublishEvent(ctx, &event, false); err != nil {
-			s.Logger.Errorw("failed to publish event to post-processing service",
-				"error", err,
-				"event_id", event.ID,
-				"event_name", event.EventName,
-			)
+	// Publish event to post-processing service for cost calculation
+	if err := s.eventPostProcessingSvc.PublishEvent(ctx, &event, false); err != nil {
+		s.Logger.Errorw("failed to publish event to post-processing service",
+			"error", err,
+			"event_id", event.ID,
+			"event_name", event.EventName,
+		)
 
-			// Return error for retry
-			return ierr.WithError(err).
-				WithHint("Failed to publish event for post-processing").
-				Mark(ierr.ErrSystem)
-		}
+		// Return error for retry
+		return ierr.WithError(err).
+			WithHint("Failed to publish event for post-processing").
+			Mark(ierr.ErrSystem)
 	}
 
 	s.Logger.Debugw("successfully processed event",
@@ -298,17 +295,14 @@ func (s *eventConsumptionService) ProcessRawEvent(ctx context.Context, payload [
 		return fmt.Errorf("failed to insert events: %w", err)
 	}
 
-	// Publish event to post-processing service
-	// Only for the tenants that are forced to v1
-	if s.Config.FeatureFlag.ForceV1ForTenant != "" && event.TenantID == s.Config.FeatureFlag.ForceV1ForTenant {
-		if err := s.eventPostProcessingSvc.PublishEvent(ctx, &event, false); err != nil {
-			s.Logger.Errorw("failed to publish event to post-processing service",
-				"error", err,
-				"event_id", event.ID,
-				"event_name", event.EventName,
-			)
-			return fmt.Errorf("failed to publish event for post-processing: %w", err)
-		}
+	// Publish event to post-processing service for cost calculation
+	if err := s.eventPostProcessingSvc.PublishEvent(ctx, &event, false); err != nil {
+		s.Logger.Errorw("failed to publish event to post-processing service",
+			"error", err,
+			"event_id", event.ID,
+			"event_name", event.EventName,
+		)
+		return fmt.Errorf("failed to publish event for post-processing: %w", err)
 	}
 
 	s.Logger.Debugw("successfully processed raw event",
