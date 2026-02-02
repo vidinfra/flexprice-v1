@@ -3,7 +3,6 @@ package payload
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 
 	"github.com/flexprice/flexprice/internal/api/dto"
 	ierr "github.com/flexprice/flexprice/internal/errors"
@@ -88,20 +87,12 @@ func (b TransactionPayloadBuilder) BuildPayload(
 		return nil, err
 	}
 
-	// Debug log to trace metadata
-	fmt.Printf("[WebhookPayloadBuilder] Building transaction webhook payload, transaction_id=%s, metadata=%+v\n",
-		transactionData.ID, transactionData.Metadata)
-
 	walletData, err := b.services.WalletService.GetWalletByID(ctx, transactionData.WalletID)
 	if err != nil {
 		return nil, err
 	}
 
 	payload := webhookDto.NewTransactionWebhookPayload(transactionData, walletData, eventType)
-
-	// Debug log the final payload
-	payloadBytes, _ := json.Marshal(payload)
-	fmt.Printf("[WebhookPayloadBuilder] Final webhook payload: %s\n", string(payloadBytes))
 
 	return json.Marshal(payload)
 
