@@ -84,11 +84,12 @@ func (s *overageBillingService) ProcessEventOverage(
 		return nil // Don't fail event processing
 	}
 
-	// 4. Calculate target threshold bucket (which $5 bucket are we in?)
-	// e.g., $0-$5 = bucket 1, $5-$10 = bucket 2, etc.
-	targetBucket := totalPeriodCost.Div(config.InvoiceThreshold).IntPart()
+	// 4. Calculate how many threshold buckets are complete (inclusive)
+	// Bucket N is complete when totalPeriodCost >= N * threshold
+	// e.g., with $5 threshold: $5.00 = bucket 1 complete, $10.00 = bucket 2 complete
+	targetBucket := totalPeriodCost.Div(config.InvoiceThreshold).Floor().IntPart()
 	if targetBucket < 1 {
-		// Not yet at first threshold
+		// Haven't accumulated enough for first invoice yet
 		return nil
 	}
 

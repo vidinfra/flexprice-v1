@@ -23,6 +23,7 @@ import (
 	"github.com/flexprice/flexprice/internal/pubsub"
 	"github.com/flexprice/flexprice/internal/pubsub/kafka"
 	pubsubRouter "github.com/flexprice/flexprice/internal/pubsub/router"
+	"github.com/flexprice/flexprice/internal/sentry"
 	"github.com/flexprice/flexprice/internal/types"
 	"github.com/samber/lo"
 	"github.com/shopspring/decimal"
@@ -673,6 +674,13 @@ func (s *eventPostProcessingService) prepareProcessedEvents(ctx context.Context,
 
 			// For MAX aggregation, we only charge for incremental increases
 			// i.e., only when the new value exceeds the current max
+			//
+			// NOTE on eventual consistency: Under heavy load, concurrent events may see
+			// stale currentMax values due to ClickHouse merge lag. Mitigations:
+			// 1. Query uses FINAL modifier for read consistency
+			// 2. ReplacingMergeTree deduplicates by event ID at merge time
+			// 3. Overage invoices use fixed threshold amounts, not summed event costs
+			// 4. Final billing recalculates from MAX(qty_total), not summed deltas
 			var costBillableQty = billableQty
 			if match.Meter.Aggregation.Type == types.AggregationMax {
 				currentMax, err := s.processedEventRepo.GetCurrentMaxQuantity(
@@ -735,7 +743,10 @@ func (s *eventPostProcessingService) prepareProcessedEvents(ctx context.Context,
 					"event_id", event.ID,
 					"subscription_id", sub.ID,
 				)
-				// Don't fail event processing - overage billing is best-effort
+				// Capture in Sentry for alerting on repeated failures
+				sentrySvc := sentry.NewSentryService(s.Config, s.Logger)
+				sentrySvc.CaptureException(err)
+				// Don't fail event processing - overage billing errors are monitored via Sentry
 			}
 
 			processedEventsPerSub = append(processedEventsPerSub, processedEventCopy)
