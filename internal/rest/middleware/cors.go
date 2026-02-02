@@ -16,12 +16,16 @@ func CORSMiddleware(allowedOrigins []string) gin.HandlerFunc {
 
 	return func(c *gin.Context) {
 		origin := c.GetHeader("Origin")
+		allowCredentials := false
 
-		// Check if origin is allowed
+		// Check if origin is allowed - only echo specific origin when matched
 		if origin != "" && (len(allowedOrigins) == 0 || allowedSet[origin]) {
 			c.Writer.Header().Set("Access-Control-Allow-Origin", origin)
+			allowCredentials = true // Safe to allow credentials with specific origin
 		} else if len(allowedOrigins) == 0 {
+			// Fallback to wildcard only when no origin header present
 			c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
+			// Note: credentials not allowed with wildcard origin (browser rejects it)
 		}
 		c.Writer.Header().Set("Vary", "Origin")
 
@@ -35,8 +39,10 @@ func CORSMiddleware(allowedOrigins []string) gin.HandlerFunc {
 			c.Writer.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type, X-Requested-With, Accept, Origin, X-Api-Key")
 		}
 
-		// Allow credentials if the client needs them (cookies, auth headers)
-		c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
+		// Only allow credentials when echoing a specific origin (not with wildcard)
+		if allowCredentials {
+			c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
+		}
 		c.Writer.Header().Set("Access-Control-Max-Age", "86400")
 
 		if c.Request.Method == "OPTIONS" {

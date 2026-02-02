@@ -352,6 +352,7 @@ func (s *eventPostProcessingService) generateUniqueHash(event *events.Event, met
 
 func (s *eventPostProcessingService) prepareProcessedEvents(ctx context.Context, event *events.Event) ([]*events.ProcessedEvent, error) {
 	subscriptionService := NewSubscriptionService(s.ServiceParams)
+	sentrySvc := sentry.NewSentryService(s.Config, s.Logger)
 
 	// Create a base processed event
 	baseProcessedEvent := event.ToProcessedEvent()
@@ -744,7 +745,6 @@ func (s *eventPostProcessingService) prepareProcessedEvents(ctx context.Context,
 					"subscription_id", sub.ID,
 				)
 				// Capture in Sentry for alerting on repeated failures
-				sentrySvc := sentry.NewSentryService(s.Config, s.Logger)
 				sentrySvc.CaptureException(err)
 				// Don't fail event processing - overage billing errors are monitored via Sentry
 			}
