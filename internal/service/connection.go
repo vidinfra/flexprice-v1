@@ -266,6 +266,29 @@ func (s *connectionService) encryptMetadata(encryptedSecretData types.Connection
 
 		encryptedMetadata.Nomod = nomodMeta
 
+	case types.SecretProviderSSLCommerz:
+		if encryptedSecretData.SSLCommerz == nil {
+			s.Logger.Warnw("SSLCommerz metadata is nil, cannot encrypt", "provider_type", providerType)
+			return types.ConnectionMetadata{}, ierr.NewError("SSLCommerz metadata is required").
+				WithHint("SSLCommerz connection requires encrypted_secret_data with store_id and store_password").
+				Mark(ierr.ErrValidation)
+		}
+		// Encrypt store ID
+		encryptedStoreID, err := s.encryptionService.Encrypt(encryptedSecretData.SSLCommerz.StoreID)
+		if err != nil {
+			return types.ConnectionMetadata{}, err
+		}
+		// Encrypt store password
+		encryptedStorePassword, err := s.encryptionService.Encrypt(encryptedSecretData.SSLCommerz.StorePassword)
+		if err != nil {
+			return types.ConnectionMetadata{}, err
+		}
+
+		encryptedMetadata.SSLCommerz = &types.SSLCommerzConnectionMetadata{
+			StoreID:       encryptedStoreID,
+			StorePassword: encryptedStorePassword,
+		}
+
 	default:
 		// For other providers or unknown types, use generic format
 		if encryptedSecretData.Generic != nil {
