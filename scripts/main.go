@@ -113,6 +113,11 @@ var commands = []Command{
 		Description: "Generate credit usage report for customers in a tenant/environment",
 		Run:         internal.GenerateCreditUsageReport,
 	},
+	{
+		Name:        "create-tenbyte-tenant",
+		Description: "Create tenbyte tenant with environments and API key",
+		Run:         internal.CreateTenantWithAPIKey,
+	},
 }
 
 // runBulkReprocessEventsCommand wraps the bulk reprocess events with command line parameters
