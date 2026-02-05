@@ -316,6 +316,13 @@ func convertConnectionMetadataToMap(encryptedSecretData types.ConnectionMetadata
 			}
 			return data
 		}
+	case types.SecretProviderSSLCommerz:
+		if encryptedSecretData.SSLCommerz != nil {
+			return map[string]interface{}{
+				"store_id":       encryptedSecretData.SSLCommerz.StoreID,
+				"store_password": encryptedSecretData.SSLCommerz.StorePassword,
+			}
+		}
 	default:
 		// For other providers or unknown types, use generic format
 		if encryptedSecretData.Generic != nil {
