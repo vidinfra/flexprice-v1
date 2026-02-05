@@ -890,9 +890,9 @@ func (s *walletService) completePurchasedCreditTransaction(ctx context.Context, 
 			Mark(ierr.ErrNotFound)
 	}
 
-	// Validate transaction state
-	if tx.TxStatus != types.TransactionStatusPending {
-		s.Logger.Debugw("wallet transaction is not pending",
+	// Validate transaction state - allow pending or failed (failed means payment link creation failed but can be retried)
+	if tx.TxStatus != types.TransactionStatusPending && tx.TxStatus != types.TransactionStatusFailed {
+		s.Logger.Debugw("wallet transaction is not in completable state",
 			"wallet_transaction_id", walletTransactionID,
 			"current_status", tx.TxStatus,
 		)
@@ -903,8 +903,8 @@ func (s *walletService) completePurchasedCreditTransaction(ctx context.Context, 
 			)
 			return nil
 		}
-		return ierr.NewError("wallet transaction is not in pending state").
-			WithHint("Only pending transactions can be completed").
+		return ierr.NewError("wallet transaction is not in completable state").
+			WithHint("Only pending or failed transactions can be completed").
 			WithReportableDetails(map[string]interface{}{
 				"wallet_transaction_id": walletTransactionID,
 				"current_status":        tx.TxStatus,

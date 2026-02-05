@@ -229,8 +229,8 @@ sslcommerz:
   session_api: "https://sandbox.sslcommerz.com/gwprocess/v4/api.php"
   validation_api: "https://sandbox.sslcommerz.com/validator/api/validationserverAPI.php"
   # IPN URL - your webhook endpoint that SSLCommerz will call
-  ipn_url: "https://seedless-garishly-ahmed.ngrok-free.dev/v1/webhooks/sslcommerz/tenant_01KENX6HXZ8RPT19GVZNS3HEAC/env_01KENX6J4VH3NG12Z5WQ12TDEE"
+  ipn_url: "https://api-staging-flex.tenbyte.io/v1/webhooks/sslcommerz/tenant_01KGHBCRK45K5C1KJATZFQ332Y/env_01KGHBCS9S28GC7WQAS2T4HD04"
   # Redirect URLs after payment
-  success_url: "https://seedless-garishly-ahmed.ngrok-free.dev/payment/success"
-  fail_url: "https://seedless-garishly-ahmed.ngrok-free.dev/payment/fail"
-  cancel_url: "https://seedless-garishly-ahmed.ngrok-free.dev/payment/cancel"
+  success_url: "https://staging.tenbyte.io/billing/payment/success"
+  fail_url: "https://staging.tenbyte.io/billing/payment/fail"
+  cancel_url: "https://staging.tenbyte.io/billing/payment/cancel"

@@ -117,6 +117,11 @@ func (s *paymentService) CreatePayment(ctx context.Context, req *dto.CreatePayme
 		paymentProcessor := NewPaymentProcessorService(s.ServiceParams)
 		p, err = paymentProcessor.ProcessPayment(ctx, p.ID)
 		if err != nil {
+			// For payment link failures, mark associated wallet transaction as failed
+			if p.PaymentMethodType == types.PaymentMethodTypePaymentLink {
+				s.handlePaymentLinkFailureCleanup(ctx, invoice)
+			}
+
 			return nil, ierr.WithError(err).
 				WithHint("Failed to process payment").
 				WithReportableDetails(map[string]interface{}{
@@ -127,6 +132,31 @@ func (s *paymentService) CreatePayment(ctx context.Context, req *dto.CreatePayme
 	}
 
 	return dto.NewPaymentResponse(p), nil
+}
+
+// handlePaymentLinkFailureCleanup marks the associated wallet transaction as failed
+// when payment link creation fails for a credit purchase invoice
+func (s *paymentService) handlePaymentLinkFailureCleanup(ctx context.Context, inv *invoice.Invoice) {
+	if inv == nil || inv.Metadata == nil {
+		return
+	}
+
+	// Check if this invoice is for a purchased credit (has wallet_transaction_id in metadata)
+	walletTransactionID, ok := inv.Metadata["wallet_transaction_id"]
+	if !ok || walletTransactionID == "" {
+		return
+	}
+
+	s.Logger.Infow("marking wallet transaction as failed due to payment link creation failure",
+		"wallet_transaction_id", walletTransactionID,
+		"invoice_id", inv.ID)
+
+	// Update wallet transaction status to failed
+	if err := s.WalletRepo.UpdateTransactionStatus(ctx, walletTransactionID, types.TransactionStatusFailed); err != nil {
+		s.Logger.Errorw("failed to mark wallet transaction as failed",
+			"wallet_transaction_id", walletTransactionID,
+			"error", err)
+	}
 }
 
 func (s *paymentService) validateInvoicePaymentEligibility(_ context.Context, invoice *invoice.Invoice, p *dto.CreatePaymentRequest) error {
