@@ -378,6 +378,65 @@ Fixed potential edge case with explicit Floor():
 targetBucket := totalPeriodCost.Div(config.InvoiceThreshold).Floor().IntPart()
 ```
 
+### Real-Time Wallet Balance Overage Deduction
+Fixed `GetWalletBalanceV2` to properly account for already-invoiced overage amounts when calculating pending charges.
+
+**Problem**: When overage billing creates invoices in real-time (e.g., $5 buckets), the wallet balance calculation was still counting the full period usage as "pending charges". This caused:
+- Real-time balance to show incorrectly low values even after auto top-up
+- Wallet alert state never recovering from `in_alarm` to `ok`
+- Auto top-up triggering once but never again
+
+**Example Before Fix**:
+```
+Total period usage:    $108
+Already invoiced:      $103 (21 overage invoices × $5)
+Pending charges:       $108 (WRONG - counted full usage)
+Wallet balance:        $100
+Real-time balance:     $100 - $108 = -$8 (WRONG)
+```
+
+**Example After Fix**:
+```
+Total period usage:    $108
+Already invoiced:      $103 (21 overage invoices × $5)
+Pending charges:       $5   (CORRECT - only unbilled usage)
+Wallet balance:        $100
+Real-time balance:     $100 - $5 = $95 (CORRECT)
+```
+
+**Files Changed**:
+
+| File | Change |
+|------|--------|
+| `internal/service/billing.go` | Made `GetOverageInvoicedAmount` public (was private `getOverageInvoicedAmount`) |
+| `internal/service/wallet.go` | In `GetWalletBalanceV2`, subtract overage already invoiced before adding to pending charges |
+
+**Code Change** (wallet.go lines 2226-2254):
+```go
+// Calculate usage charges
+usageCharges, usageTotal, err := billingService.CalculateUsageCharges(ctx, sub, usage, periodStart, periodEnd)
+
+// NEW: Deduct already-invoiced overage amounts to prevent double counting
+overageInvoiced, err := billingService.GetOverageInvoicedAmount(ctx, sub.ID, periodStart, periodEnd)
+if err != nil {
+    s.Logger.Warnw("failed to get overage invoiced amount, proceeding without deduction", ...)
+    overageInvoiced = decimal.Zero
+}
+
+// Adjust usage total by subtracting overage already invoiced
+adjustedUsageTotal := usageTotal.Sub(overageInvoiced)
+if adjustedUsageTotal.LessThan(decimal.Zero) {
+    adjustedUsageTotal = decimal.Zero  // Protect against negative
+}
+
+totalPendingCharges = totalPendingCharges.Add(adjustedUsageTotal)  // Was: Add(usageTotal)
+```
+
+This fix ensures wallet balance alerts work correctly with overage billing:
+1. Auto top-up triggers when balance drops below threshold
+2. Balance recovers above threshold after top-up (alert state → `ok`)
+3. Next usage drop can trigger another alert (state transition `ok` → `in_alarm`)
+
 ---
 
 ## 7. Configuration Changes
@@ -432,7 +491,8 @@ webhook:
 | `internal/service/event_post_processing.go` | Hook for overage billing after cost calculation |
 | `internal/service/payment_processor.go` | SSLCommerz integration, negative balance support |
 | `internal/service/wallet_payment.go` | Allow negative wallet balance |
-| `internal/service/wallet.go` | Balance tracking on transactions |
+| `internal/service/wallet.go` | Balance tracking on transactions; `GetWalletBalanceV2` overage deduction fix |
+| `internal/service/billing.go` | Made `GetOverageInvoicedAmount` public for wallet balance calculation |
 | `internal/rest/middleware/cors.go` | Origin whitelisting, credentials fix |
 | `internal/config/config.go` | SSLCommerz, CORS config parsing |
 | `internal/types/webhook.go` | New webhook event types |

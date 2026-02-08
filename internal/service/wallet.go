@@ -2223,12 +2223,35 @@ func (s *walletService) GetWalletBalanceV2(ctx context.Context, walletID string)
 				return nil, err
 			}
 
+			// Deduct already-invoiced overage amounts to prevent double counting
+			// Overage invoices are created in real-time and should be subtracted from pending charges
+			overageInvoiced, err := billingService.GetOverageInvoicedAmount(ctx, sub.ID, periodStart, periodEnd)
+			if err != nil {
+				s.Logger.Warnw("failed to get overage invoiced amount, proceeding without deduction",
+					"error", err,
+					"subscription_id", sub.ID)
+				overageInvoiced = decimal.Zero
+			}
+
+			// Adjust usage total by subtracting overage already invoiced
+			adjustedUsageTotal := usageTotal.Sub(overageInvoiced)
+			if adjustedUsageTotal.LessThan(decimal.Zero) {
+				// Overage exceeds calculated usage (shouldn't happen, but protect against it)
+				s.Logger.Warnw("overage invoiced exceeds usage total in wallet balance, setting to zero",
+					"subscription_id", sub.ID,
+					"usage_total", usageTotal.String(),
+					"overage_invoiced", overageInvoiced.String())
+				adjustedUsageTotal = decimal.Zero
+			}
+
 			s.Logger.Infow("subscription charges details",
 				"subscription_id", sub.ID,
 				"usage_total", usageTotal,
+				"overage_invoiced", overageInvoiced,
+				"adjusted_usage_total", adjustedUsageTotal,
 				"num_usage_charges", len(usageCharges))
 
-			totalPendingCharges = totalPendingCharges.Add(usageTotal)
+			totalPendingCharges = totalPendingCharges.Add(adjustedUsageTotal)
 		}
 	}
 

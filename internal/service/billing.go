@@ -72,6 +72,10 @@ type BillingService interface {
 
 	// GetCustomerUsageSummary returns usage summaries for a customer's features
 	GetCustomerUsageSummary(ctx context.Context, customerID string, req *dto.GetCustomerUsageSummaryRequest) (*dto.CustomerUsageSummaryResponse, error)
+
+	// GetOverageInvoicedAmount gets the total amount already invoiced via real-time overage billing
+	// for a subscription within a billing period. This prevents double-billing during arrear invoicing.
+	GetOverageInvoicedAmount(ctx context.Context, subscriptionID string, periodStart, periodEnd time.Time) (decimal.Decimal, error)
 }
 
 type billingService struct {
@@ -1214,7 +1218,7 @@ func (s *billingService) CalculateAllCharges(
 
 	// Deduct already-invoiced overage amounts to prevent double billing
 	// Overage invoices are created in real-time and should be subtracted from arrear billing
-	overageInvoiced, err := s.getOverageInvoicedAmount(ctx, sub.ID, periodStart, periodEnd)
+	overageInvoiced, err := s.GetOverageInvoicedAmount(ctx, sub.ID, periodStart, periodEnd)
 	if err != nil {
 		s.Logger.Warnw("failed to get overage invoiced amount, proceeding without deduction",
 			"error", err,
@@ -1266,9 +1270,9 @@ func (s *billingService) CalculateAllCharges(
 	}, nil
 }
 
-// getOverageInvoicedAmount gets the total amount already invoiced via real-time overage billing
+// GetOverageInvoicedAmount gets the total amount already invoiced via real-time overage billing
 // for a subscription within a billing period. This prevents double-billing during arrear invoicing.
-func (s *billingService) getOverageInvoicedAmount(
+func (s *billingService) GetOverageInvoicedAmount(
 	ctx context.Context,
 	subscriptionID string,
 	periodStart,
