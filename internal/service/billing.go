@@ -2135,8 +2135,11 @@ func (s *billingService) AggregateEntitlements(entitlements []*dto.EntitlementRe
 			// The entity_id is the subscription ID itself
 		}
 
-		// For subscription ID, use the one from the source if available, otherwise use the provided one
+		// For subscription ID, use the one from the entitlement if available, otherwise use the provided one
 		sourceSubscriptionID := subscriptionID
+		if ent.SubscriptionID != "" {
+			sourceSubscriptionID = ent.SubscriptionID
+		}
 
 		source := &dto.EntitlementSource{
 			SubscriptionID: sourceSubscriptionID,
@@ -2265,6 +2268,11 @@ func (s *billingService) GetCustomerEntitlements(ctx context.Context, customerID
 			continue
 		}
 
+		// Set the subscription ID on each entitlement for proper aggregation
+		for _, ent := range subEntitlements {
+			ent.SubscriptionID = sub.ID
+		}
+
 		// Filter by feature IDs if specified
 		if len(req.FeatureIDs) > 0 {
 			for _, ent := range subEntitlements {
@@ -2277,8 +2285,8 @@ func (s *billingService) GetCustomerEntitlements(ctx context.Context, customerID
 		}
 	}
 
-	// Use the generic aggregation function
-	aggregatedFeatures := s.AggregateEntitlements(allEntitlements, subscriptions[0].ID)
+	// Use the generic aggregation function (empty string since each entitlement has its SubscriptionID set)
+	aggregatedFeatures := s.AggregateEntitlements(allEntitlements, "")
 
 	// Build final response
 	response := &dto.CustomerEntitlementsResponse{

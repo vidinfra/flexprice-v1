@@ -119,6 +119,10 @@ type EntitlementResponse struct {
 
 	// TODO: Remove this once we have a proper entitlement entity type
 	PlanID string `json:"plan_id,omitempty"`
+
+	// SubscriptionID is set when fetching entitlements in the context of a subscription
+	// Used for customer entitlement aggregation to track which subscription each entitlement belongs to
+	SubscriptionID string `json:"subscription_id,omitempty"`
 }
 
 // ListEntitlementsResponse represents a paginated list of entitlements
