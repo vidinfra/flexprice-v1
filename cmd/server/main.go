@@ -25,6 +25,7 @@ import (
 	"github.com/flexprice/flexprice/internal/repository"
 	s3 "github.com/flexprice/flexprice/internal/s3"
 	"github.com/flexprice/flexprice/internal/sentry"
+	"github.com/flexprice/flexprice/internal/tenbyte/signoz"
 	"github.com/flexprice/flexprice/internal/service"
 	"github.com/flexprice/flexprice/internal/svix"
 	"github.com/flexprice/flexprice/internal/temporal"
@@ -89,6 +90,7 @@ func main() {
 			// Monitoring
 			sentry.NewSentryService,
 			pyroscope.NewPyroscopeService,
+			signoz.NewService,
 
 			// Cache
 			cache.Initialize,
@@ -255,6 +257,7 @@ func main() {
 		fx.Invoke(
 			sentry.RegisterHooks,
 			pyroscope.RegisterHooks,
+			signoz.RegisterHooks,
 			startServer,
 		),
 	)

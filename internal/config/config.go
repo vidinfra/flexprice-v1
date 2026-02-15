@@ -47,6 +47,7 @@ type Configuration struct {
 	OAuth                      OAuthConfig                      `mapstructure:"oauth" validate:"required"`
 	WalletBalanceAlert         WalletBalanceAlertConfig         `mapstructure:"wallet_balance_alert" validate:"required"`
 	SSLCommerz                 SSLCommerzConfig                 `mapstructure:"sslcommerz" validate:"omitempty"`
+	Tenbyte                    TenbyteConfig                    `mapstructure:"tenbyte" validate:"omitempty"`
 }
 
 type CacheConfig struct {
@@ -238,6 +239,23 @@ type EnvAccessConfig struct {
 type FeatureFlagConfig struct {
 	EnableFeatureUsageForAnalytics bool   `mapstructure:"enable_feature_usage_for_analytics" validate:"required"`
 	ForceV1ForTenant               string `mapstructure:"force_v1_for_tenant" validate:"omitempty"`
+}
+
+// TenbyteConfig contains Tenbyte-specific configurations (isolated for minimal upstream conflicts)
+type TenbyteConfig struct {
+	SigNoz SigNozConfig `mapstructure:"signoz" validate:"omitempty"`
+}
+
+// SigNozConfig contains OpenTelemetry/SigNoz configuration
+type SigNozConfig struct {
+	Enabled       bool    `mapstructure:"enabled" default:"false"`
+	Endpoint      string  `mapstructure:"endpoint"`                        // e.g., "signoz:4317"
+	ServiceName   string  `mapstructure:"service_name" default:"flexprice"`
+	Environment   string  `mapstructure:"environment" default:"development"`
+	SampleRate    float64 `mapstructure:"sample_rate" default:"1.0"`
+	Insecure      bool    `mapstructure:"insecure" default:"true"`         // Use insecure gRPC connection
+	BatchTimeout  int     `mapstructure:"batch_timeout" default:"5000"`    // ms
+	ExportTimeout int     `mapstructure:"export_timeout" default:"30000"`  // ms
 }
 
 type Email struct {
