@@ -22,8 +22,8 @@ processors:
         action: upsert
 
 exporters:
-  # Debug exporter for local testing
-  debug:
+  # Logging exporter for debugging (use instead of debug)
+  logging:
     verbosity: basic
 
   # ClickHouse exporter for traces (SigNoz schema)
