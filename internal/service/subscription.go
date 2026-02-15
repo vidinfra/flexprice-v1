@@ -4961,13 +4961,33 @@ func (s *subscriptionService) ProcessSubscriptionEntitlementOverrides(
 					Mark(ierr.ErrValidation)
 			}
 			// Ensure UsageResetPeriod is set for metered features
-			// If parent has empty reset period, default to MONTHLY
+			// If parent has empty reset period, determine from meter's reset_usage setting
 			if newEnt.UsageResetPeriod == "" {
-				newEnt.UsageResetPeriod = types.ENTITLEMENT_USAGE_RESET_PERIOD_MONTHLY
-				s.Logger.Warnw("subscription entitlement override: parent entitlement had empty usage_reset_period, defaulting to MONTHLY",
+				// Get the feature to find the meter
+				feature, err := s.FeatureRepo.Get(ctx, parentEnt.FeatureID)
+				if err != nil {
+					return ierr.WithError(err).
+						WithHint("Failed to fetch feature for entitlement").
+						Mark(ierr.ErrDatabase)
+				}
+				// Get the meter to determine reset behavior
+				meter, err := s.MeterRepo.GetMeter(ctx, feature.MeterID)
+				if err != nil {
+					return ierr.WithError(err).
+						WithHint("Failed to fetch meter for feature").
+						Mark(ierr.ErrDatabase)
+				}
+				// Set UsageResetPeriod based on meter's ResetUsage
+				if meter.ResetUsage == types.ResetUsageNever {
+					newEnt.UsageResetPeriod = types.ENTITLEMENT_USAGE_RESET_PERIOD_NEVER
+				} else {
+					newEnt.UsageResetPeriod = types.ENTITLEMENT_USAGE_RESET_PERIOD_MONTHLY
+				}
+				s.Logger.Warnw("subscription entitlement override: parent entitlement had empty usage_reset_period, set from meter",
 					"subscription_id", sub.ID,
 					"parent_entitlement_id", parentEnt.ID,
-					"feature_id", parentEnt.FeatureID)
+					"feature_id", parentEnt.FeatureID,
+					"usage_reset_period", newEnt.UsageResetPeriod)
 			}
 		case types.FeatureTypeStatic:
 			// For static features, static_value is required

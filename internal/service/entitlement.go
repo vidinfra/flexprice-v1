@@ -148,6 +148,14 @@ func (s *entitlementService) CreateEntitlement(ctx context.Context, req dto.Crea
 				}).
 				Mark(ierr.ErrValidation)
 		}
+
+		// Auto-set UsageResetPeriod based on meter's ResetUsage if not explicitly provided
+		if req.UsageResetPeriod == "" {
+			if meter.ResetUsage == types.ResetUsageNever {
+				req.UsageResetPeriod = types.ENTITLEMENT_USAGE_RESET_PERIOD_NEVER
+			}
+			// For BILLING_PERIOD, leave it empty - will be set based on subscription billing period at runtime
+		}
 	}
 
 	// Create entitlement
@@ -321,6 +329,14 @@ func (s *entitlementService) CreateBulkEntitlement(ctx context.Context, req dto.
 							"index":        i,
 						}).
 						Mark(ierr.ErrValidation)
+				}
+
+				// Auto-set UsageResetPeriod based on meter's ResetUsage if not explicitly provided
+				if entReq.UsageResetPeriod == "" {
+					if meter.ResetUsage == types.ResetUsageNever {
+						entReq.UsageResetPeriod = types.ENTITLEMENT_USAGE_RESET_PERIOD_NEVER
+					}
+					// For BILLING_PERIOD, leave it empty - will be set based on subscription billing period at runtime
 				}
 			}
 
