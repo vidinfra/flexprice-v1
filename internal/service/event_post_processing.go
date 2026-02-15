@@ -773,10 +773,10 @@ func (s *eventPostProcessingService) isSupportedAggregationType(agg types.Aggreg
 
 // isSupportedBillingModel checks if the billing model is supported for post-processing
 func (s *eventPostProcessingService) isSupportedBillingModel(billingModel types.BillingModel) bool {
-	// Currently we only support FLAT_FEE billing model for usage-based post-processing
+	// Support FLAT_FEE and TIERED billing models for usage-based post-processing
 	// FLAT_FEE means a flat rate per unit of usage (e.g., $0.01 per API call)
-	// TODO: Add support for PACKAGE and TIERED billing models
-	return billingModel == types.BILLING_MODEL_FLAT_FEE
+	// TIERED means pricing varies based on usage tiers (volume or slab)
+	return billingModel == types.BILLING_MODEL_FLAT_FEE || billingModel == types.BILLING_MODEL_TIERED
 }
 
 // isSupportedAggregationForPostProcessing checks if the aggregation type and billing model are supported
