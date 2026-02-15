@@ -1,5 +1,5 @@
 # OpenTelemetry Collector Configuration for SigNoz
-# This config can be used with SigNoz Cloud or self-hosted SigNoz
+# Uses existing FlexPrice ClickHouse with signoz database
 
 receivers:
   otlp:
@@ -22,37 +22,46 @@ processors:
         action: upsert
 
 exporters:
-  # Debug exporter for local testing (logs traces to stdout)
+  # Debug exporter for local testing
   debug:
     verbosity: basic
 
-  # SigNoz Cloud exporter
-  # Uncomment and configure for SigNoz Cloud
-  # otlp/signoz:
-  #   endpoint: "ingest.{region}.signoz.cloud:443"
-  #   headers:
-  #     "signoz-access-token": "<your-signoz-access-token>"
-  #   tls:
-  #     insecure: false
+  # ClickHouse exporter for traces (SigNoz schema)
+  clickhousetraces:
+    datasource: tcp://flexprice:flexprice123@clickhouse:9000/signoz
+    docker_multi_node_cluster: false
+    low_cardinal_exception_grouping: false
 
-  # Self-hosted SigNoz exporter
-  # Uncomment for self-hosted SigNoz
-  # otlp/signoz-self-hosted:
-  #   endpoint: "signoz-otel-collector:4317"
-  #   tls:
-  #     insecure: true
+  # ClickHouse exporter for metrics
+  clickhousemetricswrite:
+    endpoint: tcp://flexprice:flexprice123@clickhouse:9000/signoz
+    resource_to_telemetry_conversion:
+      enabled: true
+
+  # ClickHouse exporter for logs
+  clickhouselogsexporter:
+    dsn: tcp://flexprice:flexprice123@clickhouse:9000/signoz
+    docker_multi_node_cluster: false
+    timeout: 5s
+    sending_queue:
+      queue_size: 100
+    retry_on_failure:
+      enabled: true
+      initial_interval: 5s
+      max_interval: 30s
+      max_elapsed_time: 300s
 
 service:
   pipelines:
     traces:
       receivers: [otlp]
       processors: [batch, resource]
-      exporters: [debug]  # Change to otlp/signoz or otlp/signoz-self-hosted for production
+      exporters: [clickhousetraces]
     metrics:
       receivers: [otlp]
       processors: [batch, resource]
-      exporters: [debug]
+      exporters: [clickhousemetricswrite]
     logs:
       receivers: [otlp]
       processors: [batch, resource]
-      exporters: [debug]
+      exporters: [clickhouselogsexporter]

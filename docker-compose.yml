@@ -204,7 +204,45 @@ services:
       - ./internal/config:/app/config
     restart: unless-stopped
 
-  # OpenTelemetry Collector for SigNoz
+  # SigNoz Query Service (uses existing FlexPrice ClickHouse)
+  signoz-query-service:
+    image: signoz/query-service:0.45.1
+    profiles:
+      - monitoring
+    ports:
+      - "127.0.0.1:8085:8085"
+    environment:
+      ClickHouseUrl: tcp://flexprice:flexprice123@clickhouse:9000/signoz
+      STORAGE: clickhouse
+      GODEBUG: netdns=go
+      TELEMETRY_ENABLED: "false"
+      SIGNOZ_LOCAL_DB_PATH: /var/lib/signoz/signoz.db
+    volumes:
+      - signoz-data:/var/lib/signoz
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "localhost:8085/api/v1/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+
+  # SigNoz Frontend (UI at port 3301)
+  signoz-frontend:
+    image: signoz/frontend:0.45.1
+    profiles:
+      - monitoring
+    ports:
+      - "127.0.0.1:3301:3301"
+    environment:
+      FRONTEND_API_ENDPOINT: http://signoz-query-service:8085
+    depends_on:
+      - signoz-query-service
+    restart: unless-stopped
+
+  # OpenTelemetry Collector
   otel-collector:
     image: signoz/signoz-otel-collector:0.102.12
     profiles:
@@ -212,12 +250,20 @@ services:
     ports:
       - "127.0.0.1:4317:4317"   # OTLP gRPC
       - "127.0.0.1:4318:4318"   # OTLP HTTP
+    environment:
+      OTEL_RESOURCE_ATTRIBUTES: service.name=flexprice,deployment.environment=staging
+    command:
+      - "--config=/etc/otel-collector-config.yaml"
     volumes:
       - ./otel-collector-config.yaml:/etc/otel-collector-config.yaml
-    command: ["--config=/etc/otel-collector-config.yaml"]
+    depends_on:
+      clickhouse:
+        condition: service_healthy
     restart: unless-stopped
 
 volumes:
   postgres-data:
   kafka-data:
   clickhouse-data:
+  signoz-clickhouse-data:
+  signoz-data:
