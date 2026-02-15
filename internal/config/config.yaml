@@ -266,10 +266,10 @@ oauth:
 # Tenbyte-specific configurations (isolated for minimal upstream conflicts)
 tenbyte:
   signoz:
-    enabled: false  # Set to true to enable SigNoz/OpenTelemetry tracing
+    enabled: true  # Set to true to enable SigNoz/OpenTelemetry tracing
     endpoint: "otel-collector:4317"  # OTEL Collector endpoint (use otel-collector in Docker)
     service_name: "flexprice"
-    environment: "development"  # Change to "staging" or "production" as needed
+    environment: "staging"  # Change to "staging" or "production" as needed
     sample_rate: 1.0  # Trace sampling rate (0.0 to 1.0)
     insecure: true  # Use insecure gRPC connection (set to false for TLS)
     batch_timeout: 5000  # Batch timeout in milliseconds
