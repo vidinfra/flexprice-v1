@@ -1,5 +1,5 @@
-# OpenTelemetry Collector Configuration for SigNoz
-# Uses existing FlexPrice ClickHouse with signoz database
+# OpenTelemetry Collector Configuration
+# Receives traces from FlexPrice and forwards to SigNoz via OTLP
 
 receivers:
   otlp:
@@ -22,46 +22,27 @@ processors:
         action: upsert
 
 exporters:
-  # Logging exporter for debugging (use instead of debug)
+  # Forward to SigNoz via OTLP
+  otlp/signoz:
+    endpoint: signoz:4317
+    tls:
+      insecure: true
+
+  # Logging for debugging (optional)
   logging:
     verbosity: basic
-
-  # ClickHouse exporter for traces (SigNoz schema)
-  clickhousetraces:
-    datasource: tcp://flexprice:flexprice123@clickhouse:9000/signoz
-    docker_multi_node_cluster: false
-    low_cardinal_exception_grouping: false
-
-  # ClickHouse exporter for metrics
-  clickhousemetricswrite:
-    endpoint: tcp://flexprice:flexprice123@clickhouse:9000/signoz
-    resource_to_telemetry_conversion:
-      enabled: true
-
-  # ClickHouse exporter for logs
-  clickhouselogsexporter:
-    dsn: tcp://flexprice:flexprice123@clickhouse:9000/signoz
-    docker_multi_node_cluster: false
-    timeout: 5s
-    sending_queue:
-      queue_size: 100
-    retry_on_failure:
-      enabled: true
-      initial_interval: 5s
-      max_interval: 30s
-      max_elapsed_time: 300s
 
 service:
   pipelines:
     traces:
       receivers: [otlp]
       processors: [batch, resource]
-      exporters: [clickhousetraces]
+      exporters: [otlp/signoz]
     metrics:
       receivers: [otlp]
       processors: [batch, resource]
-      exporters: [clickhousemetricswrite]
+      exporters: [otlp/signoz]
     logs:
       receivers: [otlp]
       processors: [batch, resource]
-      exporters: [clickhouselogsexporter]
+      exporters: [otlp/signoz]
