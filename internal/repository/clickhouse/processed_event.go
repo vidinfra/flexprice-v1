@@ -464,6 +464,39 @@ func (r *ProcessedEventRepository) GetCurrentMaxQuantity(ctx context.Context, te
 	return maxQty, nil
 }
 
+// GetCurrentSumQuantity returns the current sum of quantities for a meter in a billing period
+// Used for SUM aggregation with TIERED pricing to calculate incremental cost based on cumulative usage
+func (r *ProcessedEventRepository) GetCurrentSumQuantity(ctx context.Context, tenantID, environmentID, subscriptionID, meterID string, periodID uint64) (decimal.Decimal, error) {
+	query := `
+		SELECT SUM(qty_total * sign) AS sum_qty
+		FROM events_processed FINAL
+		WHERE tenant_id = ?
+		AND environment_id = ?
+		AND subscription_id = ?
+		AND meter_id = ?
+		AND period_id = ?
+	`
+
+	var sumQty decimal.Decimal
+	err := r.store.GetConn().QueryRow(ctx, query, tenantID, environmentID, subscriptionID, meterID, periodID).Scan(&sumQty)
+	if err != nil {
+		// If no rows found, return zero (no previous sum)
+		if err.Error() == "sql: no rows in result set" {
+			return decimal.Zero, nil
+		}
+		return decimal.Zero, ierr.WithError(err).
+			WithHint("Failed to get current sum quantity").
+			WithReportableDetails(map[string]interface{}{
+				"subscription_id": subscriptionID,
+				"meter_id":        meterID,
+				"period_id":       periodID,
+			}).
+			Mark(ierr.ErrDatabase)
+	}
+
+	return sumQty, nil
+}
+
 // GetPeriodFeatureTotals gets usage totals by feature for a subscription in a period
 func (r *ProcessedEventRepository) GetPeriodFeatureTotals(ctx context.Context, tenantID, environmentID, customerID, subscriptionID string, periodID uint64) ([]*events.PeriodFeatureTotal, error) {
 	query := `

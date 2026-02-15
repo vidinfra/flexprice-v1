@@ -728,7 +728,61 @@ func (s *eventPostProcessingService) prepareProcessedEvents(ctx context.Context,
 			// Calculate cost details using the price service
 			// since per event price can be very small, we don't round the cost
 			priceService := NewPriceService(s.ServiceParams)
-			costDetails := priceService.CalculateCostWithBreakup(ctx, match.Price, costBillableQty, false)
+			var costDetails dto.CostBreakup
+
+			// For TIERED billing with SUM aggregation, calculate incremental cost based on cumulative usage
+			// This ensures each event's cost reflects its position in the tier structure
+			if match.Price.BillingModel == types.BILLING_MODEL_TIERED && match.Meter.Aggregation.Type == types.AggregationSum {
+				// Get cumulative usage before this event
+				cumulativeQty, err := s.processedEventRepo.GetCurrentSumQuantity(
+					ctx,
+					event.TenantID,
+					event.EnvironmentID,
+					sub.ID,
+					match.Meter.ID,
+					periodID,
+				)
+				if err != nil {
+					s.Logger.Errorw("failed to get cumulative quantity for TIERED pricing",
+						"error", err,
+						"event_id", event.ID,
+						"meter_id", match.Meter.ID,
+						"subscription_id", sub.ID,
+						"period_id", periodID,
+					)
+					// Fall back to simple cost calculation on error
+					costDetails = priceService.CalculateCostWithBreakup(ctx, match.Price, costBillableQty, false)
+				} else {
+					// Calculate incremental cost: cost(cumulative + new) - cost(cumulative)
+					newTotalQty := cumulativeQty.Add(costBillableQty)
+					costAtNewTotal := priceService.CalculateCostWithBreakup(ctx, match.Price, newTotalQty, false)
+					costAtCumulative := priceService.CalculateCostWithBreakup(ctx, match.Price, cumulativeQty, false)
+					incrementalCost := costAtNewTotal.FinalCost.Sub(costAtCumulative.FinalCost)
+
+					// Store the cumulative quantity as tier snapshot for reference
+					processedEventCopy.TierSnapshot = cumulativeQty
+
+					costDetails = dto.CostBreakup{
+						FinalCost:         incrementalCost,
+						EffectiveUnitCost: costAtNewTotal.EffectiveUnitCost,
+						SelectedTierIndex: costAtNewTotal.SelectedTierIndex,
+						TierUnitAmount:    costAtNewTotal.TierUnitAmount,
+					}
+
+					s.Logger.Debugw("TIERED pricing: calculated incremental cost",
+						"event_id", event.ID,
+						"meter_id", match.Meter.ID,
+						"cumulative_qty", cumulativeQty.String(),
+						"event_qty", costBillableQty.String(),
+						"new_total_qty", newTotalQty.String(),
+						"cost_at_cumulative", costAtCumulative.FinalCost.String(),
+						"cost_at_new_total", costAtNewTotal.FinalCost.String(),
+						"incremental_cost", incrementalCost.String(),
+					)
+				}
+			} else {
+				costDetails = priceService.CalculateCostWithBreakup(ctx, match.Price, costBillableQty, false)
+			}
 
 			// Set cost details on the processed event
 			processedEventCopy.UnitCost = costDetails.EffectiveUnitCost

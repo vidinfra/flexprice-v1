@@ -84,6 +84,9 @@ func (s *overageBillingService) ProcessEventOverage(
 		return nil // Don't fail event processing
 	}
 
+	// Add current event's cost to the total (it's not in ClickHouse yet)
+	totalPeriodCost = totalPeriodCost.Add(processedEvent.Cost)
+
 	// 4. Calculate how many threshold buckets are complete (inclusive)
 	// Bucket N is complete when totalPeriodCost >= N * threshold
 	// e.g., with $5 threshold: $5.00 = bucket 1 complete, $10.00 = bucket 2 complete
