@@ -22,9 +22,9 @@ processors:
         action: upsert
 
 exporters:
-  # Forward to SigNoz via OTLP
+  # Forward to SigNoz via OTLP (SigNoz listens on 4320)
   otlp/signoz:
-    endpoint: signoz:4317
+    endpoint: signoz:4320
     tls:
       insecure: true
 
