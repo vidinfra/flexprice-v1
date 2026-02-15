@@ -211,7 +211,7 @@ services:
     profiles:
       - monitoring
     ports:
-      - "127.0.0.1:3301:8080"   # UI + API
+      - "3301:8080"   # UI + API (accessible externally)
     environment:
       SIGNOZ_CLICKHOUSE_HOST: clickhouse
       SIGNOZ_CLICKHOUSE_PORT: 9000
