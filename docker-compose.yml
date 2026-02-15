@@ -145,6 +145,9 @@ services:
       - FLEXPRICE_KAFKA_BROKERS=kafka:9092
       - FLEXPRICE_CLICKHOUSE_ADDRESS=clickhouse:9000
       - FLEXPRICE_TEMPORAL_ADDRESS=temporal:7233
+      # SigNoz/OpenTelemetry (uncomment to enable)
+      # - FLEXPRICE_TENBYTE_SIGNOZ_ENABLED=true
+      # - FLEXPRICE_TENBYTE_SIGNOZ_ENDPOINT=otel-collector:4317
     volumes:
       - ./internal/config:/app/config
     restart: unless-stopped
@@ -168,6 +171,9 @@ services:
       - FLEXPRICE_KAFKA_BROKERS=kafka:9092
       - FLEXPRICE_CLICKHOUSE_ADDRESS=clickhouse:9000
       - FLEXPRICE_TEMPORAL_ADDRESS=temporal:7233
+      # SigNoz/OpenTelemetry (uncomment to enable)
+      # - FLEXPRICE_TENBYTE_SIGNOZ_ENABLED=true
+      # - FLEXPRICE_TENBYTE_SIGNOZ_ENDPOINT=otel-collector:4317
     volumes:
       - ./internal/config:/app/config
     restart: unless-stopped
@@ -191,8 +197,24 @@ services:
       - FLEXPRICE_KAFKA_BROKERS=kafka:9092
       - FLEXPRICE_CLICKHOUSE_ADDRESS=clickhouse:9000
       - FLEXPRICE_TEMPORAL_ADDRESS=temporal:7233
+      # SigNoz/OpenTelemetry (uncomment to enable)
+      # - FLEXPRICE_TENBYTE_SIGNOZ_ENABLED=true
+      # - FLEXPRICE_TENBYTE_SIGNOZ_ENDPOINT=otel-collector:4317
     volumes:
       - ./internal/config:/app/config
+    restart: unless-stopped
+
+  # OpenTelemetry Collector for SigNoz
+  otel-collector:
+    image: signoz/signoz-otel-collector:0.102.12
+    profiles:
+      - monitoring
+    ports:
+      - "127.0.0.1:4317:4317"   # OTLP gRPC
+      - "127.0.0.1:4318:4318"   # OTLP HTTP
+    volumes:
+      - ./otel-collector-config.yaml:/etc/otel-collector-config.yaml
+    command: ["--config=/etc/otel-collector-config.yaml"]
     restart: unless-stopped
 
 volumes:

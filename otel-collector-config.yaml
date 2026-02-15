@@ -1,0 +1,58 @@
+# OpenTelemetry Collector Configuration for SigNoz
+# This config can be used with SigNoz Cloud or self-hosted SigNoz
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch:
+    timeout: 5s
+    send_batch_size: 1000
+
+  # Add resource attributes
+  resource:
+    attributes:
+      - key: service.namespace
+        value: tenbyte
+        action: upsert
+
+exporters:
+  # Debug exporter for local testing (logs traces to stdout)
+  debug:
+    verbosity: basic
+
+  # SigNoz Cloud exporter
+  # Uncomment and configure for SigNoz Cloud
+  # otlp/signoz:
+  #   endpoint: "ingest.{region}.signoz.cloud:443"
+  #   headers:
+  #     "signoz-access-token": "<your-signoz-access-token>"
+  #   tls:
+  #     insecure: false
+
+  # Self-hosted SigNoz exporter
+  # Uncomment for self-hosted SigNoz
+  # otlp/signoz-self-hosted:
+  #   endpoint: "signoz-otel-collector:4317"
+  #   tls:
+  #     insecure: true
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch, resource]
+      exporters: [debug]  # Change to otlp/signoz or otlp/signoz-self-hosted for production
+    metrics:
+      receivers: [otlp]
+      processors: [batch, resource]
+      exporters: [debug]
+    logs:
+      receivers: [otlp]
+      processors: [batch, resource]
+      exporters: [debug]
