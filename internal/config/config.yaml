@@ -267,7 +267,7 @@ oauth:
 tenbyte:
   signoz:
     enabled: true  # Set to true to enable SigNoz/OpenTelemetry tracing
-    endpoint: "otel-collector:4317"  # OTEL Collector endpoint (use otel-collector in Docker)
+    endpoint: "signoz-otel-collector:4317"  # OTEL Collector endpoint (use signoz-otel-collector in Docker)
     service_name: "flexprice"
     environment: "staging"  # Change to "staging" or "production" as needed
     sample_rate: 1.0  # Trace sampling rate (0.0 to 1.0)
