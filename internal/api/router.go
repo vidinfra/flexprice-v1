@@ -9,6 +9,7 @@ import (
 	"github.com/flexprice/flexprice/internal/rbac"
 	"github.com/flexprice/flexprice/internal/rest/middleware"
 	"github.com/flexprice/flexprice/internal/service"
+	"github.com/flexprice/flexprice/internal/tenbyte/signoz" // Tenbyte: SigNoz tracing
 	"github.com/gin-gonic/gin"
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
@@ -64,7 +65,7 @@ type Handlers struct {
 	CronKafkaLagMonitoring *cron.KafkaLagMonitoringHandler
 }
 
-func NewRouter(handlers Handlers, cfg *config.Configuration, logger *logger.Logger, secretService service.SecretService, envAccessService service.EnvAccessService, rbacService *rbac.RBACService) *gin.Engine {
+func NewRouter(handlers Handlers, cfg *config.Configuration, logger *logger.Logger, secretService service.SecretService, envAccessService service.EnvAccessService, rbacService *rbac.RBACService, signozService *signoz.Service) *gin.Engine {
 	// gin.SetMode(gin.ReleaseMode)
 
 	router := gin.Default()
@@ -73,6 +74,7 @@ func NewRouter(handlers Handlers, cfg *config.Configuration, logger *logger.Logg
 		middleware.CORSMiddleware(cfg.Server.AllowedOrigins),
 		middleware.SentryMiddleware(cfg),    // Add Sentry middleware
 		middleware.PyroscopeMiddleware(cfg), // Add Pyroscope middleware
+		signozService.HTTPMiddleware(),      // Tenbyte: SigNoz tracing middleware
 	)
 
 	// Initialize permission middleware

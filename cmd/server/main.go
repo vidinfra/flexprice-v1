@@ -362,8 +362,8 @@ func provideHandlers(
 	}
 }
 
-func provideRouter(handlers api.Handlers, cfg *config.Configuration, logger *logger.Logger, secretService service.SecretService, envAccessService service.EnvAccessService, rbacService *rbac.RBACService) *gin.Engine {
-	return api.NewRouter(handlers, cfg, logger, secretService, envAccessService, rbacService)
+func provideRouter(handlers api.Handlers, cfg *config.Configuration, logger *logger.Logger, secretService service.SecretService, envAccessService service.EnvAccessService, rbacService *rbac.RBACService, signozService *signoz.Service) *gin.Engine {
+	return api.NewRouter(handlers, cfg, logger, secretService, envAccessService, rbacService, signozService)
 }
 
 func provideTemporalConfig(cfg *config.Configuration) *config.TemporalConfig {
