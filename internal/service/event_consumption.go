@@ -16,6 +16,7 @@ import (
 	"github.com/flexprice/flexprice/internal/pubsub/kafka"
 	pubsubRouter "github.com/flexprice/flexprice/internal/pubsub/router"
 	"github.com/flexprice/flexprice/internal/sentry"
+	"github.com/flexprice/flexprice/internal/tenbyte/signoz"
 	"github.com/flexprice/flexprice/internal/types"
 )
 
@@ -37,6 +38,7 @@ type eventConsumptionService struct {
 	lazyPubSub             pubsub.PubSub
 	eventRepo              events.Repository
 	sentryService          *sentry.Service
+	signozService          *signoz.Service // Tenbyte: SigNoz tracing
 	eventPostProcessingSvc EventPostProcessingService
 }
 
@@ -45,12 +47,14 @@ func NewEventConsumptionService(
 	params ServiceParams,
 	eventRepo events.Repository,
 	sentryService *sentry.Service,
+	signozService *signoz.Service, // Tenbyte: SigNoz tracing
 	eventPostProcessingSvc EventPostProcessingService,
 ) EventConsumptionService {
 	ev := &eventConsumptionService{
 		ServiceParams:          params,
 		eventRepo:              eventRepo,
 		sentryService:          sentryService,
+		signozService:          signozService,
 		eventPostProcessingSvc: eventPostProcessingSvc,
 	}
 
@@ -164,6 +168,16 @@ func (s *eventConsumptionService) processMessage(msg *message.Message) error {
 		}
 		return err
 	}
+
+	// Tenbyte: Start SigNoz span for Kafka event processing
+	ctx, span := s.signozService.StartKafkaConsumerSpan(ctx, "events")
+	defer span.End()
+	span.SetAttributes(
+		signoz.OrganizationID(event.ExternalCustomerID),
+		signoz.EventName(event.EventName),
+		signoz.EventID(event.ID),
+		signoz.TenantID(event.TenantID),
+	)
 
 	s.Logger.Debugw("processing event",
 		"event_id", event.ID,

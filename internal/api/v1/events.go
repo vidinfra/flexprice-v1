@@ -15,6 +15,8 @@ import (
 	"github.com/flexprice/flexprice/internal/types"
 	"github.com/gin-gonic/gin"
 	"github.com/samber/lo"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 type EventsHandler struct {
@@ -60,6 +62,14 @@ func (h *EventsHandler) IngestEvent(c *gin.Context) {
 	if err := req.Validate(); err != nil {
 		c.Error(err)
 		return
+	}
+
+	// Tenbyte: Add organization/event attributes to span for SigNoz tracking
+	if span := trace.SpanFromContext(ctx); span.IsRecording() {
+		span.SetAttributes(
+			attribute.String("organization.id", req.ExternalCustomerID),
+			attribute.String("event.name", req.EventName),
+		)
 	}
 
 	err := h.eventService.CreateEvent(ctx, &req)

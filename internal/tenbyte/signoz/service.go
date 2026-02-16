@@ -238,3 +238,40 @@ func (s *Service) SetSpanSuccess(span trace.Span) {
 	}
 	span.SetStatus(codes.Ok, "success")
 }
+
+// Tenbyte: Attribute helpers for organization-wise event tracking
+
+// OrganizationID returns an attribute for organization/external customer ID
+func OrganizationID(id string) attribute.KeyValue {
+	return attribute.String("organization.id", id)
+}
+
+// EventName returns an attribute for event name
+func EventName(name string) attribute.KeyValue {
+	return attribute.String("event.name", name)
+}
+
+// EventID returns an attribute for event ID
+func EventID(id string) attribute.KeyValue {
+	return attribute.String("event.id", id)
+}
+
+// TenantID returns an attribute for tenant ID
+func TenantID(id string) attribute.KeyValue {
+	return attribute.String("tenant.id", id)
+}
+
+// EnvironmentID returns an attribute for environment ID
+func EnvironmentID(id string) attribute.KeyValue {
+	return attribute.String("environment.id", id)
+}
+
+// EventStatus returns an attribute for event processing status
+func EventStatus(status string) attribute.KeyValue {
+	return attribute.String("event.status", status)
+}
+
+// EventError returns an attribute for event processing error
+func EventError(err string) attribute.KeyValue {
+	return attribute.String("event.error", err)
+}
