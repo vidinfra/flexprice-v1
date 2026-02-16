@@ -11,7 +11,6 @@ import (
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.21.0"
 	"go.uber.org/fx"
-	"google.golang.org/grpc/credentials/insecure"
 )
 
 // tracerProvider is stored to allow graceful shutdown
@@ -49,7 +48,7 @@ func RegisterHooks(lc fx.Lifecycle, svc *Service) {
 				otlptracegrpc.WithEndpoint(cfg.Endpoint),
 			}
 			if cfg.Insecure {
-				opts = append(opts, otlptracegrpc.WithTLSCredentials(insecure.NewCredentials()))
+				opts = append(opts, otlptracegrpc.WithInsecure())
 			}
 
 			// Create exporter with timeout
