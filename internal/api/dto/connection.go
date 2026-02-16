@@ -197,6 +197,20 @@ func convertFlatMetadataToStructured(flatMetadata map[string]interface{}, provid
 			Nomod: nomodMetadata,
 		}
 
+	case types.SecretProviderSSLCommerz:
+		sslcommerzMetadata := &types.SSLCommerzConnectionMetadata{}
+
+		if storeID, ok := flatMetadata["store_id"].(string); ok {
+			sslcommerzMetadata.StoreID = storeID
+		}
+		if storePassword, ok := flatMetadata["store_password"].(string); ok {
+			sslcommerzMetadata.StorePassword = storePassword
+		}
+
+		return types.ConnectionMetadata{
+			SSLCommerz: sslcommerzMetadata,
+		}
+
 	default:
 		// For other providers or unknown types, use generic format
 		return types.ConnectionMetadata{
