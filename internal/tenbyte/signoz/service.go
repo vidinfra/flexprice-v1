@@ -275,3 +275,22 @@ func EventStatus(status string) attribute.KeyValue {
 func EventError(err string) attribute.KeyValue {
 	return attribute.String("event.error", err)
 }
+
+// EventProperty returns an attribute for an event property with proper type handling
+func EventProperty(key string, value interface{}) attribute.KeyValue {
+	attrKey := "event.property." + key
+	switch v := value.(type) {
+	case float64:
+		return attribute.Float64(attrKey, v)
+	case int:
+		return attribute.Int(attrKey, v)
+	case int64:
+		return attribute.Int64(attrKey, v)
+	case string:
+		return attribute.String(attrKey, v)
+	case bool:
+		return attribute.Bool(attrKey, v)
+	default:
+		return attribute.String(attrKey, fmt.Sprintf("%v", v))
+	}
+}

@@ -178,6 +178,10 @@ func (s *eventConsumptionService) processMessage(msg *message.Message) error {
 		signoz.EventID(event.ID),
 		signoz.TenantID(event.TenantID),
 	)
+	// Tenbyte: Add event properties as span attributes
+	for key, value := range event.Properties {
+		span.SetAttributes(signoz.EventProperty(key, value))
+	}
 
 	s.Logger.Debugw("processing event",
 		"event_id", event.ID,
