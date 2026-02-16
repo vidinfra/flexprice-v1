@@ -213,12 +213,9 @@ services:
     ports:
       - "3301:8080"   # UI + API (accessible externally)
     environment:
-      SIGNOZ_CLICKHOUSE_HOST: clickhouse
-      SIGNOZ_CLICKHOUSE_PORT: 9000
-      SIGNOZ_CLICKHOUSE_USER: flexprice
-      SIGNOZ_CLICKHOUSE_PASSWORD: flexprice123
-      SIGNOZ_CLICKHOUSE_DATABASE: signoz
-      STORAGE: clickhouse
+      # ClickHouse connection string format
+      SIGNOZ_SQLSTORE_CLICKHOUSE_DSN: "tcp://flexprice:flexprice123@clickhouse:9000/signoz"
+      SIGNOZ_TELEMETRYSTORE_CLICKHOUSE_DSN: "tcp://flexprice:flexprice123@clickhouse:9000/signoz"
       GODEBUG: netdns=go
       TELEMETRY_ENABLED: "false"
       SIGNOZ_LOCAL_DB_PATH: /var/lib/signoz/signoz.db
