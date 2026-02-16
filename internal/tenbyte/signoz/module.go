@@ -65,20 +65,13 @@ func RegisterHooks(lc fx.Lifecycle, svc *Service) {
 				return nil
 			}
 
-			// Create resource with service info
-			res, err := resource.Merge(
-				resource.Default(),
-				resource.NewWithAttributes(
-					semconv.SchemaURL,
-					semconv.ServiceName(cfg.ServiceName),
-					semconv.DeploymentEnvironment(cfg.Environment),
-					semconv.ServiceNamespace("tenbyte"),
-				),
+			// Create resource with service info (don't merge with Default to avoid schema conflicts)
+			res := resource.NewWithAttributes(
+				semconv.SchemaURL,
+				semconv.ServiceName(cfg.ServiceName),
+				semconv.DeploymentEnvironment(cfg.Environment),
+				semconv.ServiceNamespace("tenbyte"),
 			)
-			if err != nil {
-				svc.logger.Errorw("Failed to create resource, using default", "error", err)
-				res = resource.Default()
-			}
 
 			// Create tracer provider
 			batchTimeout := time.Duration(cfg.BatchTimeout) * time.Millisecond
