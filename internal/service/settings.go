@@ -242,6 +242,8 @@ func (s *settingsService) UpdateSettingByKey(ctx context.Context, key types.Sett
 		return updateSettingByKey[*workflowModels.WorkflowConfig](s, ctx, key, req)
 	case types.SettingKeyWalletBalanceAlertConfig:
 		return updateSettingByKey[types.AlertConfig](s, ctx, key, req)
+	case types.SettingKeyOverageBillingConfig:
+		return updateSettingByKey[types.OverageBillingConfig](s, ctx, key, req)
 	default:
 		return nil, ierr.NewErrorf("unknown setting key: %s", key).
 			WithHintf("Unknown setting key: %s", key).
