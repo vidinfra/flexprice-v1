@@ -1,0 +1,125 @@
+version: '3.8'
+
+# SigNoz Monitoring Stack
+# Runs via Docker alongside bare metal FlexPrice services
+# Usage: cd /opt/flexprice-v1/deploy/signoz && docker compose up -d
+
+services:
+  # SigNoz Zookeeper (required for ClickHouse clustering)
+  signoz-zookeeper:
+    image: signoz/zookeeper:3.7.1
+    container_name: signoz-zookeeper
+    volumes:
+      - signoz-zookeeper-data:/bitnami/zookeeper
+    environment:
+      - ZOO_SERVER_ID=1
+      - ALLOW_ANONYMOUS_LOGIN=yes
+      - ZOO_AUTOPURGE_INTERVAL=1
+    healthcheck:
+      test: ["CMD-SHELL", "echo srvr | nc localhost 2181 | grep Zookeeper"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+
+  # SigNoz ClickHouse (separate from FlexPrice ClickHouse)
+  signoz-clickhouse:
+    image: clickhouse/clickhouse-server:25.5.6
+    container_name: signoz-clickhouse
+    tty: true
+    volumes:
+      - signoz-clickhouse-data:/var/lib/clickhouse
+      - ../../signoz/clickhouse/config.xml:/etc/clickhouse-server/config.xml
+      - ../../signoz/clickhouse/users.xml:/etc/clickhouse-server/users.xml
+      - ../../signoz/clickhouse/custom-function.xml:/etc/clickhouse-server/custom-function.xml
+      - ../../signoz/clickhouse/cluster.xml:/etc/clickhouse-server/config.d/cluster.xml
+      - ../../signoz/clickhouse/user_scripts:/var/lib/clickhouse/user_scripts/
+    environment:
+      - CLICKHOUSE_SKIP_USER_SETUP=1
+    depends_on:
+      signoz-zookeeper:
+        condition: service_healthy
+    ulimits:
+      nproc: 65535
+      nofile:
+        soft: 262144
+        hard: 262144
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "localhost:8123/ping"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+
+  # SigNoz Schema Migrator (initializes ClickHouse tables)
+  signoz-schema-migrator:
+    image: signoz/signoz-schema-migrator:v0.142.0
+    container_name: signoz-schema-migrator
+    command:
+      - "sync"
+      - "--dsn=tcp://signoz-clickhouse:9000"
+      - "--up="
+    depends_on:
+      signoz-clickhouse:
+        condition: service_healthy
+    restart: on-failure
+
+  # SigNoz Query Service + Frontend
+  signoz:
+    image: signoz/signoz:v0.111.0
+    container_name: signoz
+    ports:
+      - "3301:8080"   # UI + API
+    command:
+      - "--config=/root/config/prometheus.yml"
+    environment:
+      - SIGNOZ_ALERTMANAGER_PROVIDER=signoz
+      - SIGNOZ_TELEMETRYSTORE_CLICKHOUSE_DSN=tcp://signoz-clickhouse:9000
+      - SIGNOZ_SQLSTORE_SQLITE_PATH=/var/lib/signoz/signoz.db
+      - STORAGE=clickhouse
+      - GODEBUG=netdns=go
+      - TELEMETRY_ENABLED=false
+      - DEPLOYMENT_TYPE=docker-standalone-amd
+    volumes:
+      - signoz-data:/var/lib/signoz
+      - ../../signoz/prometheus.yml:/root/config/prometheus.yml
+    depends_on:
+      signoz-clickhouse:
+        condition: service_healthy
+      signoz-schema-migrator:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "localhost:8080/api/v1/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+
+  # SigNoz OpenTelemetry Collector
+  signoz-otel-collector:
+    image: signoz/signoz-otel-collector:v0.142.0
+    container_name: signoz-otel-collector
+    ports:
+      - "4317:4317"   # OTLP gRPC (FlexPrice sends traces here)
+      - "4318:4318"   # OTLP HTTP
+    environment:
+      - OTEL_RESOURCE_ATTRIBUTES=host.name=signoz-host,os.type=linux
+      - LOW_CARDINAL_EXCEPTION_GROUPING=false
+    command:
+      - "--config=/etc/otel-collector-config.yaml"
+    volumes:
+      - ../../signoz/otel-collector-config.yaml:/etc/otel-collector-config.yaml
+    depends_on:
+      signoz-clickhouse:
+        condition: service_healthy
+      signoz-schema-migrator:
+        condition: service_completed_successfully
+      signoz:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  signoz-data:
+  signoz-clickhouse-data:
+  signoz-zookeeper-data:

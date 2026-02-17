@@ -1,0 +1,33 @@
+[Unit]
+Description=Temporal Server
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+Type=simple
+User=temporal
+Group=temporal
+WorkingDirectory=/opt/temporal
+ExecStart=/opt/temporal/bin/temporal-server start --config /opt/temporal/config/temporal.yaml
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+# Environment
+Environment=LOG_LEVEL=info
+Environment=DB=postgresql
+Environment=DB_PORT=5432
+Environment=POSTGRES_USER=temporal
+Environment=POSTGRES_PWD=temporal123
+Environment=POSTGRES_SEEDS=127.0.0.1
+
+# Resource limits
+LimitNOFILE=65535
+MemoryMax=1G
+
+# Security
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

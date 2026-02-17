@@ -1,0 +1,31 @@
+[Unit]
+Description=FlexPrice Event Consumer
+After=network.target postgresql.service clickhouse-server.service redpanda.service
+Wants=postgresql.service clickhouse-server.service redpanda.service
+
+[Service]
+Type=simple
+User=flexprice
+Group=flexprice
+WorkingDirectory=/opt/flexprice
+ExecStart=/opt/flexprice/bin/flexprice-app consumer
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+# Environment
+Environment=FLEXPRICE_CONFIG_PATH=/opt/flexprice/config/config.yaml
+
+# Resource limits
+LimitNOFILE=65535
+MemoryMax=512M
+
+# Security
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/flexprice/logs
+
+[Install]
+WantedBy=multi-user.target

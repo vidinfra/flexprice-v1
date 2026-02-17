@@ -1,0 +1,24 @@
+[Unit]
+Description=Redpanda Message Broker
+After=network.target
+
+[Service]
+Type=simple
+User=redpanda
+Group=redpanda
+WorkingDirectory=/var/lib/redpanda
+ExecStart=/opt/redpanda/bin/redpanda start --config /etc/redpanda/redpanda.yaml
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+# Resource limits
+LimitNOFILE=100000
+MemoryMax=2G
+
+# Security
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target
