@@ -171,7 +171,7 @@ func GetDefaultSettings() (map[SettingKey]DefaultSettingValue, error) {
 
 	defaultOverageBillingConfig := OverageBillingConfig{
 		Enabled:          true,
-		InvoiceThreshold: decimal.NewFromFloat(50.0), // Default $50.00 threshold (Tenbyte: increased from $5.00)
+		InvoiceThreshold: decimal.NewFromFloat(20.0), // Default $20.00 threshold (Tenbyte: changed from $5.00)
 	}
 
 	// Convert typed structs to maps using centralized utility
