@@ -1,25 +1,25 @@
-# FlexPrice Production Configuration Example
-# Copy this file and update values for your deployment
-# Each service (api, consumer, worker) needs its own config directory
+# FlexPrice Temporal Worker Configuration
+# Location: /opt/flexprice-worker/config/config.yaml
+# Handles: Temporal workflows (billing, invoicing, scheduled tasks)
 
 deployment:
-  mode: "api"  # Use "api", "consumer", or "temporal_worker"
+  mode: "temporal_worker"
 
 server:
-  address: ":8080"  # Use different ports for each service
+  address: ":8082"  # Different port than API and consumer
   allowed_origins:
-    - "https://your-dashboard.example.com"
-    - "https://your-api.example.com"
+    - "https://billing.tenbyte.io"
+    - "https://api-billing.tenbyte.io"
     - "http://localhost:5173"
 
 auth:
   provider: "flexprice"
-  secret: "<generate-with-openssl-rand-hex-64>"
+  secret: "<same-as-api-secret>"
   api_key:
     header: "x-api-key"
 
 kafka:
-  brokers: "127.0.0.1:9092"  # Redpanda or Kafka
+  brokers: "127.0.0.1:9092"
   consumer_group: "flexprice-consumer"
   topic: "events"
   topic_lazy: "events_lazy"
@@ -31,16 +31,16 @@ clickhouse:
   address: 127.0.0.1:9000
   tls: false
   username: flexprice
-  password: "<your-clickhouse-password>"
+  password: "<clickhouse-password>"
   database: flexprice
 
 postgres:
   host: 127.0.0.1
   port: 5432
   user: flexprice
-  password: "<your-postgres-password>"
+  password: "<postgres-password>"
   dbname: flexprice
-  sslmode: disable  # Use "require" if connecting over network
+  sslmode: disable
   max_open_conns: 25
   max_idle_conns: 10
   conn_max_lifetime_minutes: 60
@@ -63,12 +63,20 @@ webhook:
   topic: "system_events"
   pubsub: "kafka"
   consumer_group: "webhook-consumer"
-  tenants: {}  # Configure per-tenant webhooks
+  tenants:
+    "tenant_01KGHBCRK45K5C1KJATZFQ332Y":
+      enabled: true
+      endpoint: "https://api.tenbyte.io/v1/webhooks/flexprice/alert"
+      headers:
+        "X-Api-Key": "<api-key>"
+      excluded_events:
+        - "tenant.created"
+        - "tenant.updated"
 
 secrets:
-  encryption_key: "<generate-with-openssl-rand-hex-64>"
+  encryption_key: "<same-as-api-encryption-key>"
 
-# Required for all services
+# Required config sections
 event_processing:
   topic: "events"
   rate_limit: 12
@@ -109,7 +117,6 @@ wallet_balance_alert:
   rate_limit: 1
   consumer_group: "v1_wallet_alert_service"
 
-# Optional services
 sentry:
   enabled: false
   dsn: ""
@@ -158,7 +165,6 @@ oauth:
 rbac:
   roles_config_path: "config/rbac/roles.json"
 
-# Tenbyte-specific (SigNoz monitoring)
 tenbyte:
   signoz:
     enabled: true
@@ -168,12 +174,11 @@ tenbyte:
     sample_rate: 1.0
     insecure: true
 
-# SSLCommerz payment gateway (Bangladesh)
 sslcommerz:
-  base_url: "https://securepay.sslcommerz.com"  # Production URL
+  base_url: "https://securepay.sslcommerz.com"
   session_api: "https://securepay.sslcommerz.com/gwprocess/v4/api.php"
   validation_api: "https://securepay.sslcommerz.com/validator/api/validationserverAPI.php"
-  ipn_url: "https://your-api.example.com/v1/webhooks/sslcommerz/{tenant_id}/{env_id}"
-  success_url: "https://your-dashboard.example.com/billing/payment/success"
-  fail_url: "https://your-dashboard.example.com/billing/payment/fail"
-  cancel_url: "https://your-dashboard.example.com/billing/payment/cancel"
+  ipn_url: "https://api-billing.tenbyte.io/v1/webhooks/sslcommerz/{tenant_id}/{env_id}"
+  success_url: "https://billing.tenbyte.io/billing/payment/success"
+  fail_url: "https://billing.tenbyte.io/billing/payment/fail"
+  cancel_url: "https://billing.tenbyte.io/billing/payment/cancel"
