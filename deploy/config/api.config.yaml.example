@@ -5,7 +5,7 @@ deployment:
   mode: "api"
 
 server:
-  address: ":8080"
+  address: ":8000"  # Changed from 8080 (SigNoz uses 8080)
   allowed_origins:
     - "https://billing.tenbyte.io"
     - "https://api-billing.tenbyte.io"

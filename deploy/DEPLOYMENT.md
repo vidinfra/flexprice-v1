@@ -1,6 +1,6 @@
 # FlexPrice Production Deployment & Handover Guide
 
-**Last Updated:** February 18, 2026
+**Last Updated:** February 19, 2026
 **Server:** 163.61.156.37
 **SSH Alias:** `ssh FlexPrice`
 
@@ -12,19 +12,23 @@
 # SSH to server
 ssh FlexPrice
 
-# Check all services status
-sudo systemctl status flexprice-api flexprice-consumer flexprice-worker temporal redpanda clickhouse-server postgresql
+# Check ALL services status (one command)
+sudo systemctl status flexprice-api flexprice-consumer flexprice-worker \
+     signoz-otel-collector signoz-query-service \
+     temporal redpanda clickhouse-server postgresql zookeeper nginx
 
 # View logs (real-time)
-journalctl -u flexprice-api -f
-journalctl -u flexprice-consumer -f
-journalctl -u flexprice-worker -f
+journalctl -u flexprice-api -f          # API logs
+journalctl -u flexprice-consumer -f     # Consumer logs
+journalctl -u flexprice-worker -f       # Worker logs
+journalctl -u signoz-otel-collector -f  # Monitoring logs
 
 # Restart all FlexPrice services
 sudo systemctl restart flexprice-api flexprice-consumer flexprice-worker
 
-# Check API health
-curl https://api-billing.tenbyte.io/health
+# Check health
+curl https://api-billing.tenbyte.io/health   # API
+curl https://monitoring.tenbyte.io/          # SigNoz UI
 ```
 
 ---
@@ -56,7 +60,7 @@ curl https://api-billing.tenbyte.io/health
 | API | https://api-billing.tenbyte.io |
 | Dashboard | https://billing.tenbyte.io |
 | API Health | https://api-billing.tenbyte.io/health |
-| Monitoring | https://monitoring.tenbyte.io (SigNoz - pending setup) |
+| Monitoring | https://monitoring.tenbyte.io (SigNoz) |
 
 ### Test Login
 - **Email:** mantis@yopmail.com
@@ -67,31 +71,47 @@ curl https://api-billing.tenbyte.io/health
 ## Architecture Overview
 
 ```
-                                    ┌─────────────────────────────────────────┐
-                                    │           NGINX (SSL Termination)       │
-                                    │  billing.tenbyte.io → /opt/flex-front   │
-                                    │  api-billing.tenbyte.io → :8080         │
-                                    └─────────────────┬───────────────────────┘
-                                                      │
-                    ┌─────────────────────────────────┼─────────────────────────────────┐
-                    │                                 │                                 │
-                    ▼                                 ▼                                 ▼
-        ┌───────────────────┐           ┌───────────────────┐           ┌───────────────────┐
-        │  flexprice-api    │           │ flexprice-consumer│           │ flexprice-worker  │
-        │    (port 8080)    │           │    (port 8081)    │           │    (port 8082)    │
-        │   mode: "api"     │           │  mode: "consumer" │           │mode:"temporal_worker"│
-        └─────────┬─────────┘           └─────────┬─────────┘           └─────────┬─────────┘
-                  │                               │                               │
-                  │                               │                               │
-    ┌─────────────┴───────────────────────────────┴───────────────────────────────┴─────────────┐
-    │                                                                                           │
-    │  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐    ┌─────────────┐                │
-    │  │ PostgreSQL  │    │ ClickHouse  │    │  Redpanda   │    │  Temporal   │                │
-    │  │   (5432)    │    │   (9000)    │    │   (9092)    │    │   (7233)    │                │
-    │  │ Main Data   │    │  Analytics  │    │   Kafka     │    │  Workflows  │                │
-    │  └─────────────┘    └─────────────┘    └─────────────┘    └─────────────┘                │
-    │                                                                                           │
-    └───────────────────────────────────────────────────────────────────────────────────────────┘
+                              ┌─────────────────────────────────────────────────┐
+                              │              NGINX (SSL Termination)            │
+                              │   billing.tenbyte.io     → /opt/flex-front      │
+                              │   api-billing.tenbyte.io → :8000 (FlexPrice)    │
+                              │   monitoring.tenbyte.io  → :8080 (SigNoz)       │
+                              └──────────────────────┬──────────────────────────┘
+                                                     │
+          ┌──────────────────────────────────────────┼──────────────────────────────────┐
+          │                                          │                                  │
+          ▼                                          ▼                                  ▼
+┌───────────────────┐                    ┌───────────────────┐            ┌───────────────────┐
+│  flexprice-api    │                    │ flexprice-consumer│            │ flexprice-worker  │
+│    (port 8000)    │──events──┐         │    (port 8081)    │            │    (port 8082)    │
+│   mode: "api"     │          │    ┌────│  mode: "consumer" │            │mode:"temporal_worker"│
+└────────┬──────────┘          │    │    └─────────┬─────────┘            └─────────┬─────────┘
+         │                     ▼    ▼              │                                │
+         │              ┌─────────────────┐        │                                │
+         │              │    Redpanda     │────────┘                                │
+         │              │     (9092)      │                                         │
+         │              │  Event Broker   │                                         │
+         │              └─────────────────┘                                         │
+         │                                                                          │
+         │              ┌───────────────────────────────────────────────────────────┤
+         │              │                                                           │
+         ▼              ▼                                                           ▼
+┌─────────────┐    ┌─────────────┐                                         ┌───────────────┐
+│ PostgreSQL  │    │ ClickHouse  │◄──────────────────────────┐             │   Temporal    │
+│   (5432)    │    │   (9000)    │                           │             │    (7233)     │
+│  Main Data  │    │  Analytics  │                           │             │   Workflows   │
+└─────────────┘    └──────┬──────┘                           │             └───────────────┘
+                          │                                  │
+                          │    ┌─────────────────────────────┴─────────────────────────────┐
+                          │    │              SigNoz Monitoring Stack                      │
+                          │    │  ┌─────────────────┐              ┌──────────────────┐   │
+                          └────┼─▶│  OTel Collector │───traces────▶│  Query Service   │   │
+                               │  │   (4317/4318)   │              │   (port 8080)    │   │
+                               │  └─────────────────┘              └──────────────────┘   │
+                               │         ▲                                                │
+                               └─────────┼────────────────────────────────────────────────┘
+                                         │
+                        FlexPrice services send traces via OTLP
 ```
 
 ---
@@ -112,7 +132,7 @@ curl https://api-billing.tenbyte.io/health
 │
 ├── flexprice-api/                  # API server working directory
 │   └── config/
-│       ├── config.yaml             # mode: api, port: 8080
+│       ├── config.yaml             # mode: api, port: 8000
 │       └── rbac/roles.json
 │
 ├── flexprice-consumer/             # Kafka consumer working directory
@@ -136,6 +156,19 @@ curl https://api-billing.tenbyte.io/health
 │   ├── .env                        # VITE_API_URL=https://api-billing.tenbyte.io/v1
 │   └── ...
 │
+├── signoz/                         # SigNoz Monitoring (deployed 2026-02-18)
+│   ├── bin/
+│   │   ├── signoz-otel-collector   # OpenTelemetry Collector
+│   │   ├── signoz-query-service    # Query Service & UI
+│   │   └── signoz-schema-migrator  # DB schema tool
+│   ├── config/
+│   │   └── otel-collector-config.yaml
+│   ├── web/                        # SigNoz frontend assets
+│   └── data/                       # Local data
+│
+├── zookeeper/                      # ZooKeeper (required by ClickHouse cluster)
+│   └── data/
+│
 └── temporal/                       # Temporal server
     ├── bin/                        # Temporal binaries
     └── config/                     # Temporal config
@@ -149,14 +182,19 @@ curl https://api-billing.tenbyte.io/health
 
 | Service | Port | Systemd Unit | Config Path |
 |---------|------|--------------|-------------|
-| flexprice-api | 8080 | flexprice-api.service | /opt/flexprice-api/config/config.yaml |
+| flexprice-api | 8000 | flexprice-api.service | /opt/flexprice-api/config/config.yaml |
 | flexprice-consumer | 8081 | flexprice-consumer.service | /opt/flexprice-consumer/config/config.yaml |
 | flexprice-worker | 8082 | flexprice-worker.service | /opt/flexprice-worker/config/config.yaml |
+| signoz-otel-collector | 4317, 4318 | signoz-otel-collector.service | /opt/signoz/config/otel-collector-config.yaml |
+| signoz-query-service | 8080 | signoz-query-service.service | (env vars in systemd unit) |
 | PostgreSQL | 5432 | postgresql.service | /etc/postgresql/17/main/ |
 | ClickHouse | 9000, 8123 | clickhouse-server.service | /etc/clickhouse-server/ |
 | Redpanda | 9092 | redpanda.service | /etc/redpanda/ |
 | Temporal | 7233 | temporal.service | /opt/temporal/config/ |
+| ZooKeeper | 2181 | zookeeper.service | /opt/zookeeper/conf/ |
 | Nginx | 80, 443 | nginx.service | /etc/nginx/ |
+
+**Note:** FlexPrice API runs on port 8000 internally. SigNoz Query Service uses port 8080. Both are proxied through Nginx.
 
 ---
 
@@ -465,9 +503,31 @@ sudo certbot renew --dry-run
 
 ---
 
-## Monitoring (SigNoz - Bare Metal)
+## Monitoring (SigNoz - DEPLOYED)
 
-SigNoz will be deployed on bare metal using the **existing FlexPrice ClickHouse** instance.
+SigNoz is deployed on bare metal using the **existing FlexPrice ClickHouse** instance.
+
+### Quick Commands
+```bash
+# Check SigNoz status
+sudo systemctl status signoz-otel-collector signoz-query-service
+
+# View OTel Collector logs (traces coming in)
+journalctl -u signoz-otel-collector -f
+
+# View Query Service logs
+journalctl -u signoz-query-service -f
+
+# Restart SigNoz
+sudo systemctl restart signoz-otel-collector signoz-query-service
+```
+
+### Access
+| Item | Value |
+|------|-------|
+| URL | https://monitoring.tenbyte.io |
+| Internal Port | 8080 (proxied via nginx) |
+| First Login | Create account on first visit |
 
 ### Architecture
 ```
@@ -478,43 +538,33 @@ FlexPrice Services ──(OTLP gRPC:4317)──► SigNoz OTel Collector ──�
                                               Nginx (monitoring.tenbyte.io)
 ```
 
-### Components to Install
-| Component | Port | Purpose |
-|-----------|------|---------|
-| signoz-otel-collector | 4317, 4318 | Receives traces from FlexPrice |
-| signoz-query-service | 8080 (internal) | Query API & UI |
+### Components (All Running)
+| Component | Port | Status | Purpose |
+|-----------|------|--------|---------|
+| signoz-otel-collector | 4317 (gRPC), 4318 (HTTP) | ✅ Running | Receives traces from FlexPrice |
+| signoz-query-service | 8080 | ✅ Running | Query API & Web UI |
+| zookeeper | 2181 | ✅ Running | Required by ClickHouse cluster |
 
-### Installation (TODO)
+### ClickHouse Databases (SigNoz)
 ```bash
-# 1. Create SigNoz tables in existing ClickHouse
-clickhouse-client -u flexprice --password flexprice123 < /opt/flexprice-v1/deploy/signoz/clickhouse-schema.sql
+# View SigNoz databases
+clickhouse-client -q "SHOW DATABASES" | grep signoz
 
-# 2. Install SigNoz OTel Collector
-# Download from: https://github.com/SigNoz/signoz-otel-collector/releases
-wget https://github.com/SigNoz/signoz-otel-collector/releases/download/v0.88.0/signoz-otel-collector_0.88.0_linux_amd64.tar.gz
-tar -xzf signoz-otel-collector_*.tar.gz -C /opt/signoz/bin/
-
-# 3. Install SigNoz Query Service
-# Download from: https://github.com/SigNoz/signoz/releases
-
-# 4. Configure to use existing ClickHouse
-# Edit /opt/signoz/config/otel-collector-config.yaml
-# Set clickhouse endpoint to: 127.0.0.1:9000
-
-# 5. Create systemd services
-sudo cp /opt/flexprice-v1/deploy/systemd/signoz-*.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable signoz-otel-collector signoz-query-service
-sudo systemctl start signoz-otel-collector signoz-query-service
+# Databases created:
+# - signoz_traces    (trace data)
+# - signoz_metrics   (metrics data)
+# - signoz_logs      (log data)
+# - signoz_metadata  (internal metadata)
+# - signoz_analytics (analytics data)
 ```
 
-### FlexPrice Config (already configured)
+### FlexPrice Config (Sending Traces)
 ```yaml
 # In /opt/flexprice-*/config/config.yaml
 tenbyte:
   signoz:
     enabled: true
-    endpoint: "127.0.0.1:4317"  # OTel Collector
+    endpoint: "127.0.0.1:4317"  # OTel Collector gRPC
     service_name: "tenbyte-billing"
     environment: "production"
     sample_rate: 1.0
@@ -523,12 +573,43 @@ tenbyte:
 
 ### Nginx Config
 ```
-/etc/nginx/sites-available/signoz → proxy to signoz-query-service
+/etc/nginx/sites-available/monitoring → proxy to localhost:8080
 ```
 
-### Access
-- **URL:** https://monitoring.tenbyte.io
-- **Port:** 3301 (internal) → proxied via nginx
+### Systemd Services
+```bash
+# OTel Collector
+/etc/systemd/system/signoz-otel-collector.service
+
+# Query Service (configured via environment variables)
+/etc/systemd/system/signoz-query-service.service
+# Key env vars:
+#   SIGNOZ_WEB_DIRECTORY=/opt/signoz/web
+#   SIGNOZ_SQLSTORE_SQLITE_PATH=/var/lib/signoz/signoz.db
+#   SIGNOZ_TELEMETRYSTORE_CLICKHOUSE_DSN=tcp://127.0.0.1:9000
+#   SIGNOZ_TELEMETRYSTORE_CLICKHOUSE_CLUSTER=cluster
+#   SIGNOZ_TOKENIZER_JWT_SECRET=<secret>
+```
+
+### Troubleshooting SigNoz
+```bash
+# No traces showing up?
+# 1. Check OTel Collector is receiving data
+journalctl -u signoz-otel-collector -n 50 | grep -i "trace"
+
+# 2. Check FlexPrice is sending traces
+journalctl -u flexprice-api -n 50 | grep -i "signoz\|otel\|trace"
+
+# 3. Check ClickHouse has data
+clickhouse-client -q "SELECT count() FROM signoz_traces.signoz_index_v2"
+
+# Query Service won't start?
+# Check JWT secret is set
+cat /etc/systemd/system/signoz-query-service.service | grep JWT
+
+# Check ClickHouse cluster config exists
+cat /etc/clickhouse-server/config.d/cluster.xml
+```
 
 ---
 
@@ -586,6 +667,9 @@ htop                                       # Process monitor
 | 2026-02-18 | Set up automated backups (cron) | Saad Rupai |
 | 2026-02-18 | Fixed consumer panic issue | Saad Rupai |
 | 2026-02-18 | Created user auth records | Saad Rupai |
+| 2026-02-18 | Deployed SigNoz monitoring (bare metal) | Saad Rupai |
+| 2026-02-18 | Changed FlexPrice API port 8080→8000 (SigNoz uses 8080) | Saad Rupai |
+| 2026-02-18 | Added ZooKeeper for ClickHouse cluster | Saad Rupai |
 
 ---
 
