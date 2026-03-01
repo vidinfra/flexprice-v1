@@ -51,6 +51,20 @@ func (s *CustomerService) EnsureCustomerSyncedToStripe(ctx context.Context, cust
 		s.logger.Infow("customer already synced to Stripe",
 			"customer_id", customerID,
 			"stripe_customer_id", stripeID)
+
+		updateReq := dto.UpdateCustomerRequest{
+			Metadata: s.mergeCustomerMetadata(ourCustomer.Metadata, map[string]string{
+				"stripe_customer_id": stripeID,
+			}),
+		}
+
+		_, err := customerService.UpdateCustomer(ctx, ourCustomer.ID, updateReq)
+		if err != nil {
+			s.logger.Warnw("failed to update customer metadata with Stripe ID",
+				"customer_id", customerID,
+				"error", err)
+		}
+
 		return ourCustomerResp, nil
 	}
 

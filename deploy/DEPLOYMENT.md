@@ -461,17 +461,57 @@ rpk topic list
 rpk group list
 ```
 
+### Redpanda OOM Crash Loop
+**Symptom:** Redpanda service in `activating` state, rapid restart count (`systemctl show redpanda -p NRestarts`), `connection refused` on port 9092, FlexPrice consumer stops processing events, webhooks not firing.
+
+**Diagnosis:**
+```bash
+# Check restart count
+systemctl show redpanda -p NRestarts
+
+# Check for OOM in logs
+journalctl -u redpanda -n 200 | grep -iE 'oom|memory|abort|SIGABRT'
+
+# Check memory config mismatch
+grep memory /etc/redpanda/redpanda.yaml     # redpanda config
+grep Memory /etc/systemd/system/redpanda.service  # systemd limit
+```
+
+**Root Cause:** Systemd `MemoryMax` set lower than redpanda config `memory`. Each shard gets insufficient memory → OOM on partition log replay → crash loop.
+
+**Fix:**
+```bash
+# 1. Set MemoryMax >= redpanda memory config
+sudo sed -i 's/MemoryMax=2G/MemoryMax=3G/' /etc/systemd/system/redpanda.service
+sudo systemctl daemon-reload
+sudo systemctl restart redpanda
+
+# 2. Wait 15s, verify stable
+sleep 15 && systemctl status redpanda
+
+# 3. Set topic retention to prevent unbounded growth
+for topic in events events_lazy events_post_processing system_events wallet_alert onboarding_events; do
+  rpk topic alter-config $topic --set retention.ms=604800000 --set retention.bytes=1073741824
+done
+
+# 4. Restart FlexPrice services to reconnect
+sudo systemctl restart flexprice-consumer flexprice-api flexprice-worker
+```
+
+**Prevention:** Always ensure systemd `MemoryMax` >= redpanda config `memory` value. Monitor `/var/lib/redpanda/data/` size.
+
 ---
 
 ## Kafka Topics (Redpanda)
 
-| Topic | Partitions | Purpose |
-|-------|------------|---------|
-| events | 3 | Main event ingestion |
-| events_lazy | 3 | Lazy processing events |
-| events_post_processing | 3 | Post-processing queue |
-| system_events | 3 | Webhooks & system events |
-| wallet_alert | 1 | Wallet balance alerts |
+| Topic | Partitions | Retention | Purpose |
+|-------|------------|-----------|---------|
+| events | 3 | 7 days / 1GB | Main event ingestion |
+| events_lazy | 3 | 7 days / 1GB | Lazy processing events |
+| events_post_processing | 3 | 7 days / 1GB | Post-processing queue |
+| system_events | 3 | 7 days / 1GB | Webhooks & system events |
+| wallet_alert | 1 | 7 days / 1GB | Wallet balance alerts |
+| onboarding_events | 1 | 7 days / 1GB | Customer onboarding events |
 
 ```bash
 # Create topic (if missing)
@@ -670,6 +710,8 @@ htop                                       # Process monitor
 | 2026-02-18 | Deployed SigNoz monitoring (bare metal) | Saad Rupai |
 | 2026-02-18 | Changed FlexPrice API port 8080→8000 (SigNoz uses 8080) | Saad Rupai |
 | 2026-02-18 | Added ZooKeeper for ClickHouse cluster | Saad Rupai |
+| 2026-03-02 | Fixed Redpanda OOM crash loop: MemoryMax 2G→3G to match redpanda config | Claude |
+| 2026-03-02 | Set topic retention policies: 7 days + 1GB max per topic (was unbounded, 9.9GB data) | Claude |
 
 ---
 

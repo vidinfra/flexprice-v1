@@ -14,8 +14,10 @@ StandardOutput=journal
 StandardError=journal
 
 # Resource limits
+# IMPORTANT: MemoryMax MUST be >= redpanda.yaml `memory` setting (currently 3G).
+# If MemoryMax < memory, each shard gets insufficient RAM → OOM crash loop on partition replay.
 LimitNOFILE=100000
-MemoryMax=2G
+MemoryMax=3G
 
 # Security
 NoNewPrivileges=true

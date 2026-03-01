@@ -136,6 +136,15 @@ echo -e "${GREEN}ClickHouse installed and configured${NC}"
 # ==========================================
 echo -e "${YELLOW}Installing Redpanda...${NC}"
 
+# Create redpanda user
+if ! id "redpanda" &>/dev/null; then
+    useradd -r -s /bin/false -d /var/lib/redpanda redpanda
+fi
+
+mkdir -p /opt/redpanda
+mkdir -p /var/lib/redpanda/data
+chown -R redpanda:redpanda /var/lib/redpanda
+
 if [ "$OS" = "ubuntu" ] || [ "$OS" = "debian" ]; then
     curl -1sLf 'https://dl.redpanda.com/nzc4ZYQK3WRGd9sy/redpanda/cfg/setup/bash.deb.sh' | bash
     apt-get install -y redpanda
@@ -145,20 +154,70 @@ elif [ "$OS" = "centos" ] || [ "$OS" = "rhel" ] || [ "$OS" = "rocky" ]; then
 fi
 
 # Configure Redpanda
-rpk redpanda config set redpanda.developer_mode true
-rpk redpanda config set pandaproxy_client.brokers '["127.0.0.1:9092"]'
+# IMPORTANT: memory setting here MUST match MemoryMax in systemd/redpanda.service (currently 3G).
+# If MemoryMax < memory, redpanda OOM crash-loops on partition log replay.
+mkdir -p /etc/redpanda
+cat > /etc/redpanda/redpanda.yaml <<EOF
+redpanda:
+    data_directory: /var/lib/redpanda/data
+    seed_servers: []
+    overprovisioned: true
+    smp: 2
+    memory: 3G
+    reserve_memory: 1G
+    rpc_server:
+        address: 0.0.0.0
+        port: 33145
+    kafka_api:
+        - address: 0.0.0.0
+          port: 9092
+    admin:
+        - address: 0.0.0.0
+          port: 9644
+    advertised_rpc_api:
+        address: 127.0.0.1
+        port: 33145
+    advertised_kafka_api:
+        - address: 127.0.0.1
+          port: 9092
+    developer_mode: true
+    auto_create_topics_enabled: true
+    fetch_reads_debounce_timeout: 10
+    group_initial_rebalance_delay: 0
+    group_topic_partitions: 3
+    log_segment_size_min: 1
+    storage_min_free_bytes: 10485760
+    topic_partitions_per_shard: 1000
+    write_caching_default: "true"
+    max_concurrent_producer_ids: 5000
+    log_segment_size: 134217728
+rpk:
+    overprovisioned: true
+    coredump_dir: /var/lib/redpanda/coredump
+pandaproxy: {}
+schema_registry: {}
+EOF
 
-# Create topics
+chown -R redpanda:redpanda /etc/redpanda
+
+# Start Redpanda
 systemctl enable redpanda
 systemctl start redpanda
 
-sleep 5  # Wait for Redpanda to start
+sleep 10  # Wait for Redpanda to fully start
 
+# Create topics
 rpk topic create events --partitions 3
 rpk topic create events_lazy --partitions 3
 rpk topic create events_post_processing --partitions 3
 rpk topic create system_events --partitions 3
 rpk topic create wallet_alert --partitions 1
+rpk topic create onboarding_events --partitions 1
+
+# Set retention policies (7 days / 1GB per topic) to prevent unbounded growth
+for topic in events events_lazy events_post_processing system_events wallet_alert onboarding_events; do
+    rpk topic alter-config $topic --set retention.ms=604800000 --set retention.bytes=1073741824
+done
 
 echo -e "${GREEN}Redpanda installed and configured${NC}"
 
