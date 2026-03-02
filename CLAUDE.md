@@ -610,3 +610,37 @@ src/
 - **Testing**: Table-driven tests, mock repositories, in-memory pub/sub for testing
 - **Config**: YAML primary, `FLEXPRICE_*` env vars for overrides
 - **Ent ORM**: Schemas in `ent/schema/`, auto-generated code — run `go generate ./ent` after schema changes
+
+---
+
+# Billing UI Conventions (Tenbyte Frontend)
+
+## Cancel Subscription
+- **Do NOT call the cancel subscription API.** The flow is: select reason → confirm → show "Contact Support" message with `mailto:support@tenbyte.io`.
+- The `CancelSubscriptionModal` receives `planName` prop from `PlansOverview` to display which plan is being cancelled.
+
+## Billing Address
+- Country field is **locked after first save** — uses `selectProps={{ disabled: !!initialValues?.country }}` on the `SelectField` component.
+- The warning "Billing country cannot be changed once set" is shown alongside the disabled field.
+
+## Bill As
+- Removed. All billing defaults to organization. No individual/company toggle.
+
+## Plans Grid
+- Plans are displayed per category (Vidinfra, CDN) with a responsive grid:
+  - 1 plan → single column, centered (`max-w-md mx-auto`)
+  - 2 plans → 2-column grid (`md:grid-cols-2`)
+  - 3+ plans → 3-column grid (`md:grid-cols-3`)
+- Outer container: `max-w-5xl mx-auto`
+
+## Payment History Table (Overview)
+- Columns are sortable client-side (click header to toggle asc/desc).
+- Backend also supports `sort_field` and `sort_order` query params on `GET /overview/:orgID`.
+- Invoice PDF download tracks per-invoice loading state (`downloadingId`).
+- If `invoice_download_url` is empty, download button is disabled with tooltip "PDF not available yet".
+- Backend rejects PDF download for DRAFT invoices with HTTP 400.
+
+## Invoice Payment
+- Unpaid invoices show "Pay Now" → navigates to `/organization/billing/plans/invoice/{invoiceId}/pay`
+- Supports Stripe and SSLCommerz payment gateways.
+- Saved card (default payment method) vs new card choice modal.
