@@ -263,7 +263,24 @@ func (s *CustomerService) CreateCustomerFromStripe(ctx context.Context, stripeCu
 		}
 	}
 
-	// Step 3: Create new customer
+	// Step 3: Check if a FlexPrice customer is already mapped to this Stripe customer ID
+	// This handles the race condition where EnsureCustomerSyncedToStripe creates the Stripe
+	// customer but the customer.created webhook arrives before flexprice_customer_id metadata
+	// is set on the Stripe customer.
+	mappingFilter := &types.EntityIntegrationMappingFilter{
+		EntityType:        types.IntegrationEntityTypeCustomer,
+		ProviderTypes:     []string{string(types.SecretProviderStripe)},
+		ProviderEntityIDs: []string{stripeCustomer.ID},
+	}
+	existingMappings, err := s.entityIntegrationMappingRepo.List(ctx, mappingFilter)
+	if err == nil && len(existingMappings) > 0 {
+		s.logger.Infow("FlexPrice customer already mapped to this Stripe customer, skipping creation",
+			"flexprice_customer_id", existingMappings[0].EntityID,
+			"stripe_customer_id", stripeCustomer.ID)
+		return nil
+	}
+
+	// Step 4: Create new customer
 	createReq := dto.CreateCustomerRequest{
 		ExternalID: externalID,
 		Name:       stripeCustomer.Name,
