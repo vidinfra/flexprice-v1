@@ -64,7 +64,11 @@ webhook:
   pubsub: "kafka"
   consumer_group: "webhook-consumer"
   tenants:
-    "tenant_01KGHBCRK45K5C1KJATZFQ332Y":
+    # NOTE: Webhook handler runs on the API service, not consumer.
+    # This config is here for schema compatibility but webhooks are
+    # processed by flexprice-api. See api.config.yaml.example for
+    # the per-environment routing config.
+    "tenant_01kghbcrk45k5c1kjatzfq332y/env_01kghbcs9s28gc7wqas2t4hd05":
       enabled: true
       endpoint: "https://api.tenbyte.io/v1/webhooks/flexprice/alert"
       headers:

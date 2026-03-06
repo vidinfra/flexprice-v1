@@ -136,3 +136,4 @@ server
 # custom local files
 lambdas/*
 
+CLAUDE.md

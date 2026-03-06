@@ -64,9 +64,19 @@ webhook:
   pubsub: "kafka"
   consumer_group: "webhook-consumer"
   tenants:
-    "tenant_01KGHBCRK45K5C1KJATZFQ332Y":
+    # Per-environment routing: use composite key tenant_id/env_id (lowercased by viper)
+    # Handler tries tenant_id/env_id first, falls back to tenant_id only
+    "tenant_01kghbcrk45k5c1kjatzfq332y/env_01kghbcs9s28gc7wqas2t4hd05":
       enabled: true
       endpoint: "https://api.tenbyte.io/v1/webhooks/flexprice/alert"
+      headers:
+        "X-Api-Key": "<api-key>"
+      excluded_events:
+        - "tenant.created"
+        - "tenant.updated"
+    "tenant_01kghbcrk45k5c1kjatzfq332y/env_01kghbcs9s28gc7wqas2t4hd04":
+      enabled: true
+      endpoint: "https://api-staging.tenbyte.io/v1/webhooks/flexprice/alert"
       headers:
         "X-Api-Key": "<api-key>"
       excluded_events:

@@ -587,32 +587,63 @@ sslcommerz:
 
 ### Outgoing Webhooks (FlexPrice → Tenbyte)
 
-Configure in FlexPrice config:
+The webhook handler runs on the **API** service (not consumer), subscribing to `system_events` Kafka topic via Watermill.
+
+Configure in `/opt/flexprice-api/config/config.yaml` with per-environment routing:
 
 ```yaml
 webhook:
   enabled: true
   topic: "system_events"
+  pubsub: "kafka"
+  consumer_group: "webhook-consumer"
   tenants:
-    "tenant_01KGHBCRK45K5C1KJATZFQ332Y":
+    # Per-environment routing: composite key = tenant_id/env_id (lowercased by viper)
+    "tenant_01kghbcrk45k5c1kjatzfq332y/env_01kghbcs9s28gc7wqas2t4hd05":
       enabled: true
       endpoint: "https://api.tenbyte.io/v1/webhooks/flexprice/alert"
       headers:
         "X-Api-Key": "<api-key>"
+      excluded_events:
+        - "tenant.created"
+        - "tenant.updated"
+    "tenant_01kghbcrk45k5c1kjatzfq332y/env_01kghbcs9s28gc7wqas2t4hd04":
+      enabled: true
+      endpoint: "https://api-staging.tenbyte.io/v1/webhooks/flexprice/alert"
+      headers:
+        "X-Api-Key": "<api-key>"
+      excluded_events:
+        - "tenant.created"
+        - "tenant.updated"
 ```
+
+**Routing logic:** Tries composite `tenant_id/env_id` key first, falls back to `tenant_id` only for backward compatibility.
 
 ### Webhook Events
 
 | Event | Description |
 |-------|-------------|
+| `customer.updated` | Customer data changed (e.g., Stripe sync) |
 | `invoice.created` | New invoice generated |
 | `invoice.paid` | Invoice payment completed |
 | `wallet.balance.low` | Wallet balance below threshold |
 | `wallet.topped_up` | Wallet successfully topped up |
+| `wallet.transaction.created` | Wallet transaction recorded |
 | `subscription.created` | New subscription started |
 | `subscription.cancelled` | Subscription cancelled |
 | `payment.succeeded` | Payment processed successfully |
 | `payment.failed` | Payment processing failed |
+
+### Stripe → FlexPrice → Tenbyte Flow
+
+```
+Payment created → EnsureCustomerSyncedToStripe()
+    → UpdateCustomer() adds stripe_customer_id to metadata
+    → Publishes customer.updated to Kafka (system_events)
+    → Webhook handler delivers to Tenbyte endpoint by environment
+```
+
+Stripe also sends `customer.created` back — FlexPrice checks entity integration mappings to prevent duplicate customer creation (race condition fix applied 2026-03-04).
 
 ### Incoming Webhooks (Payment Providers → FlexPrice)
 
@@ -702,8 +733,8 @@ Authorization: Bearer <jwt_token>
 | Service | Port | Config |
 |---------|------|--------|
 | flexprice-api | 8000 | `/opt/flexprice-api/config/config.yaml` |
-| flexprice-consumer | 8001 | `/opt/flexprice-consumer/config/config.yaml` |
-| flexprice-worker | 8002 | `/opt/flexprice-worker/config/config.yaml` |
+| flexprice-consumer | 8081 | `/opt/flexprice-consumer/config/config.yaml` |
+| flexprice-worker | 8082 | `/opt/flexprice-worker/config/config.yaml` |
 
 ### Systemd Commands
 
@@ -792,6 +823,87 @@ curl -s https://api-billing.tenbyte.io/v1/health | jq
 
 ---
 
+## 15. Billing Event Ingestion (CDN & VidInfra)
+
+External Tenbyte services push hourly usage events to FlexPrice via `POST /v1/events`.
+
+### Event Sources
+
+| Source | Repo | Event Name | Unit | Description |
+|--------|------|-----------|------|-------------|
+| CDN (custom/tenbytecloud) | tenbyte-cdn-api | `cdn.traffic.usage` | GB | CDN bandwidth for custom distributions |
+| CDN (custom/tenbytecloud) | tenbyte-cdn-api | `cdn.requests.usage` | count | HTTP requests for custom distributions |
+| CDN (library/vidinfra) | tenbyte-cdn-api | `vidinfra.traffic.usage` | GB | CDN bandwidth for video library distributions |
+| Video storage | vidinfra-api | `storage.usage` | GB | Total video storage per organization |
+
+### How tenbyte-cdn-api Pushes Events
+
+- Billing push job runs at `:05` past every hour
+- Aggregates metrics by `provider:domain:metric_type:hour` with streaming aggregation
+- Looks up distribution type (custom/library/tenbytecloud) to determine event name prefix
+- `ShouldSkipBilling()` skips library+requests (not billable)
+- `eventName()` maps distribution type + metric type → FlexPrice event name
+- Traffic values converted bytes → GB; requests sent as raw counts
+
+### How vidinfra-api Pushes Events
+
+- Storage push job runs at `:05` past every hour
+- Queries `SUM(size_bytes)` per org from videos table (excluding deleted)
+- Converts bytes → GB, pushes `storage.usage` events
+- BillingSnapshot records track each push with idempotency keys (`{org_id}_storage_{hour}`)
+- Failed pushes retried within 24-hour lookback window (max 5 attempts)
+- BillingJobLog tracks each run with success/failure counts
+
+### Ingest Example
+
+```bash
+# Example CDN traffic event (sent by tenbyte-cdn-api)
+curl -X POST https://api-billing.tenbyte.io/v1/events \
+  -H "x-api-key: sk_01KGHBDWHMA896YDVMKAEN2VV6" \
+  -H "X-Environment-ID: env_01KGHBCS9S28GC7WQAS2T4HD05" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "events": [{
+      "event_name": "cdn.traffic.usage",
+      "external_customer_id": "org-uuid-here",
+      "idempotency_key": "provider_domain_traffic_1709510400_1073741824",
+      "properties": {
+        "cdn.traffic.usage": "1.000000",
+        "metric_type": "traffic",
+        "unit": "GB",
+        "distribution_type": "custom"
+      }
+    }]
+  }'
+```
+
+---
+
+## 16. Utility Scripts
+
+### Reset Stripe Customer Mappings
+
+When switching Stripe test keys, old Stripe customer IDs become invalid. This script clears all mappings per-environment.
+
+```bash
+# Dry-run first
+./scripts/reset_stripe_customers.sh \
+  --api-url https://api-billing.tenbyte.io \
+  --api-key sk_01KHJKJTBWCZQQJPADYMRFYC3B \
+  --env-id env_01KGHBCS9S28GC7WQAS2T4HD04 \
+  --dry-run
+```
+
+**What it does:**
+1. Fetches all customers for the environment (paginated)
+2. Removes `stripe_customer_id` from each customer's metadata
+3. Deletes all Stripe `entity_integration_mappings` for customers
+4. Next payment triggers customer re-sync to new Stripe account
+
+**Notes:** API key is shared across environments — `--env-id` scopes via `X-Environment-ID` header.
+
+---
+
 ## Appendix: Test Data
 
 ### Test Customer
@@ -819,5 +931,5 @@ curl -X POST https://api-billing.tenbyte.io/v1/events \
 
 ---
 
-*Document Version: 1.0*
-*Last Updated: February 2026*
+*Document Version: 2.0*
+*Last Updated: March 2026*

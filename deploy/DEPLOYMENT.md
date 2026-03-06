@@ -1,6 +1,6 @@
 # FlexPrice Production Deployment & Handover Guide
 
-**Last Updated:** February 19, 2026
+**Last Updated:** March 4, 2026
 **Server:** 163.61.156.37
 **SSH Alias:** `ssh FlexPrice`
 
@@ -526,6 +526,139 @@ rpk topic describe events
 
 ---
 
+## Webhook Per-Environment Routing
+
+The webhook handler runs on the **API** service (not consumer), subscribing to the `system_events` Kafka topic via Watermill.
+
+### Config Structure
+
+Webhooks are routed per-environment using composite `tenant_id/env_id` keys (lowercased by viper):
+
+```yaml
+# In /opt/flexprice-api/config/config.yaml
+webhook:
+  enabled: true
+  topic: "system_events"
+  pubsub: "kafka"
+  consumer_group: "webhook-consumer"
+  tenants:
+    # Per-environment routing: composite key = tenant_id/env_id
+    "tenant_01kghbcrk45k5c1kjatzfq332y/env_01kghbcs9s28gc7wqas2t4hd05":
+      enabled: true
+      endpoint: "https://api.tenbyte.io/v1/webhooks/flexprice/alert"
+      headers:
+        "X-Api-Key": "<api-key>"
+      excluded_events:
+        - "tenant.created"
+        - "tenant.updated"
+    "tenant_01kghbcrk45k5c1kjatzfq332y/env_01kghbcs9s28gc7wqas2t4hd04":
+      enabled: true
+      endpoint: "https://api-staging.tenbyte.io/v1/webhooks/flexprice/alert"
+      headers:
+        "X-Api-Key": "<api-key>"
+      excluded_events:
+        - "tenant.created"
+        - "tenant.updated"
+```
+
+### Routing Logic
+
+1. Handler tries composite key `tenant_id/env_id` first
+2. Falls back to `tenant_id` only (backward compatible)
+3. If neither found, logs warning and skips (no retry)
+
+### Stripe → FlexPrice → Tenbyte Flow
+
+```
+Payment created → EnsureCustomerSyncedToStripe()
+    → UpdateCustomer() adds stripe_customer_id to metadata
+    → Publishes customer.updated to Kafka (system_events topic)
+    → Webhook handler picks up event
+    → Delivers to Tenbyte endpoint based on environment
+    → Tenbyte processes customer update
+```
+
+**Note:** Stripe also sends `customer.created` webhook back to FlexPrice — this is handled by the Stripe webhook handler which checks entity integration mappings to prevent duplicate customer creation.
+
+---
+
+## Utility Scripts
+
+### Reset Stripe Customer Mappings
+
+When switching Stripe test keys, old Stripe customer IDs become invalid. This script clears all mappings so FlexPrice re-syncs customers to the new Stripe account on next payment.
+
+**Location:** `scripts/reset_stripe_customers.sh`
+
+```bash
+# Always dry-run first
+./scripts/reset_stripe_customers.sh \
+  --api-url https://api-billing.tenbyte.io \
+  --api-key sk_01KHJKJTBWCZQQJPADYMRFYC3B \
+  --env-id env_01KGHBCS9S28GC7WQAS2T4HD04 \
+  --dry-run
+
+# Then run for real (remove --dry-run)
+./scripts/reset_stripe_customers.sh \
+  --api-url https://api-billing.tenbyte.io \
+  --api-key sk_01KHJKJTBWCZQQJPADYMRFYC3B \
+  --env-id env_01KGHBCS9S28GC7WQAS2T4HD04
+```
+
+**What it does:**
+1. Fetches all customers for the environment
+2. Removes `stripe_customer_id` from each customer's metadata
+3. Deletes all Stripe `entity_integration_mappings` for customers
+
+**Notes:**
+- API key is shared across environments — use `--env-id` to scope via `X-Environment-ID` header
+- After running, next payment will trigger customer re-sync to the new Stripe account
+
+---
+
+## Billing Event Ingestion (CDN & VidInfra)
+
+External Tenbyte services push usage events to FlexPrice for billing. These events feed into subscription usage tracking and overage billing.
+
+### Event Sources
+
+| Source | Repo | Event Name | Unit | Schedule |
+|--------|------|-----------|------|----------|
+| CDN (custom/tenbytecloud) | tenbyte-cdn-api | `cdn.traffic.usage` | GB | Hourly |
+| CDN (custom/tenbytecloud) | tenbyte-cdn-api | `cdn.requests.usage` | count | Hourly |
+| CDN (library/vidinfra) | tenbyte-cdn-api | `vidinfra.traffic.usage` | GB | Hourly |
+| Video storage | vidinfra-api | `storage.usage` | GB | Hourly |
+
+### How It Works
+
+**tenbyte-cdn-api** (`feat/billing-requests-and-vidinfra-split`):
+- Billing push job runs at `:05` past every hour
+- Aggregates metrics by `provider:domain:metric_type:hour`
+- Looks up distribution type to determine event name prefix (`cdn.*` vs `vidinfra.*`)
+- Library distributions with requests metric are skipped (not billable)
+- Traffic → bytes to GB conversion; requests → raw count
+
+**vidinfra-api** (`feat/billing-storage-push`):
+- Storage push job runs at `:05` past every hour
+- Queries `SUM(size_bytes)` per org from videos table
+- Converts bytes → GB, pushes `storage.usage` events
+- BillingSnapshot records track each push with idempotency keys
+- Failed pushes are retried within 24-hour lookback window (max 5 attempts)
+
+### Verification
+
+```bash
+# Check recent billing events in ClickHouse
+clickhouse-client -u flexprice --password flexprice123 -q "
+  SELECT event_name, external_customer_id, timestamp, properties
+  FROM flexprice.events
+  WHERE event_name IN ('cdn.traffic.usage', 'cdn.requests.usage', 'vidinfra.traffic.usage', 'storage.usage')
+  ORDER BY timestamp DESC
+  LIMIT 10"
+```
+
+---
+
 ## SSL Certificates
 
 Managed by Let's Encrypt via Certbot. Auto-renewal is enabled.
@@ -712,6 +845,10 @@ htop                                       # Process monitor
 | 2026-02-18 | Added ZooKeeper for ClickHouse cluster | Saad Rupai |
 | 2026-03-02 | Fixed Redpanda OOM crash loop: MemoryMax 2G→3G to match redpanda config | Claude |
 | 2026-03-02 | Set topic retention policies: 7 days + 1GB max per topic (was unbounded, 9.9GB data) | Claude |
+| 2026-03-04 | Fixed per-environment webhook routing — rebuilt binary, webhooks now deliver to staging | Claude |
+| 2026-03-04 | Fixed Stripe customer duplicate race condition — entity integration mapping check | Claude |
+| 2026-03-04 | Added `scripts/reset_stripe_customers.sh` for clearing Stripe mappings per environment | Claude |
+| 2026-03-04 | Added CDN/VidInfra billing event ingestion docs (cdn.traffic, cdn.requests, vidinfra.traffic, storage) | Claude |
 
 ---
 
