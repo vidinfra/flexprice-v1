@@ -10,15 +10,25 @@
 
 ### Database Changes
 
-None.
+**Primary key type change** (migration: `20260308000000_change_billing_job_logs_id_to_uuid.sql`):
+
+| Table | Column | Before | After |
+|-------|--------|--------|-------|
+| `metrics` | `id` | `BIGSERIAL` | `UUID` |
+| `billing_job_logs` | `id` | `BIGSERIAL` | `UUID` |
+
+UUIDs generated at app level before insert. DB `DEFAULT gen_random_uuid()` kept as fallback.
 
 ### Code Changes
 
 | File | Change |
 |------|--------|
-| `internal/jobs/billing_metric_push_job.go` | Push `requests` metric alongside `traffic`; look up distribution type from DB; semaphore context cancellation fix; warn log for missing distributions |
+| `internal/jobs/billing_metric_push_job.go` | Push `requests` metric alongside `traffic`; look up distribution type from DB; semaphore context cancellation fix; warn log for missing distributions; job log ID changed to UUID |
 | `internal/pkg/billing/providers/flexprice/provider.go` | Dynamic event names by distribution type (`cdn.*` vs `vidinfra.*`); skip billing for library+requests; traffic sent as GB, requests sent as raw count |
 | `internal/pkg/billing/billing.go` | Added `ShouldSkipBilling()` to interface |
+| `internal/models/metric.go` | Primary key `ID` changed from `int64` to `uuid.UUID`; `SourceMetricIDs` changed from `[]int64` to `[]uuid.UUID` |
+| `internal/models/billing_job_log.go` | Primary key `ID` changed from `int64` to `uuid.UUID` |
+| `internal/cdn/analytics_providers.go` | Metric creation sets `ID: uuid.New()` at app level |
 
 ### Server Impact
 
