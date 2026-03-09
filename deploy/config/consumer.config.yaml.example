@@ -1,0 +1,189 @@
+# FlexPrice Consumer Configuration
+# Location: /opt/flexprice-consumer/config/config.yaml
+# Handles: Event processing, feature tracking, costsheet tracking, webhooks
+
+deployment:
+  mode: "consumer"
+
+server:
+  address: ":8081"  # Different port than API
+  allowed_origins:
+    - "https://billing.tenbyte.io"
+    - "https://api-billing.tenbyte.io"
+    - "http://localhost:5173"
+
+auth:
+  provider: "flexprice"
+  secret: "<same-as-api-secret>"
+  api_key:
+    header: "x-api-key"
+
+kafka:
+  brokers: "127.0.0.1:9092"
+  consumer_group: "flexprice-consumer"
+  topic: "events"
+  topic_lazy: "events_lazy"
+  tls: false
+  use_sasl: false
+  client_id: "flexprice-client"
+
+clickhouse:
+  address: 127.0.0.1:9000
+  tls: false
+  username: flexprice
+  password: "<clickhouse-password>"
+  database: flexprice
+
+postgres:
+  host: 127.0.0.1
+  port: 5432
+  user: flexprice
+  password: "<postgres-password>"
+  dbname: flexprice
+  sslmode: disable
+  max_open_conns: 25
+  max_idle_conns: 10
+  conn_max_lifetime_minutes: 60
+  auto_migrate: true
+
+temporal:
+  address: "127.0.0.1:7233"
+  tls: false
+  namespace: "default"
+  task_queue: "billing-task-queue"
+
+event:
+  publish_destination: "kafka"
+
+logging:
+  level: "info"
+
+webhook:
+  enabled: true
+  topic: "system_events"
+  pubsub: "kafka"
+  consumer_group: "webhook-consumer"
+  tenants:
+    # NOTE: Webhook handler runs on the API service, not consumer.
+    # This config is here for schema compatibility but webhooks are
+    # processed by flexprice-api. See api.config.yaml.example for
+    # the per-environment routing config.
+    "tenant_01kghbcrk45k5c1kjatzfq332y/env_01kghbcs9s28gc7wqas2t4hd05":
+      enabled: true
+      endpoint: "https://api.tenbyte.io/v1/webhooks/flexprice/alert"
+      headers:
+        "X-Api-Key": "<api-key>"
+      excluded_events:
+        - "tenant.created"
+        - "tenant.updated"
+
+secrets:
+  encryption_key: "<same-as-api-encryption-key>"
+
+# CRITICAL: These must have rate_limit > 0 or consumer will panic
+event_processing:
+  topic: "events"
+  rate_limit: 12
+  consumer_group: "flexprice-consumer"
+
+event_processing_lazy:
+  topic: "events_lazy"
+  rate_limit: 12
+  consumer_group: "v1_event_processing_lazy"
+
+event_post_processing:
+  topic: "events_post_processing"
+  rate_limit: 12
+  consumer_group: "v1_events_post_processing"
+
+feature_usage_tracking:
+  topic: "events"
+  rate_limit: 1
+  consumer_group: "v1_feature_tracking_service"
+
+# CRITICAL: This was missing and caused divide-by-zero panic
+feature_usage_tracking_lazy:
+  topic: "events_lazy"
+  rate_limit: 1
+  consumer_group: "v1_feature_tracking_service_lazy"
+
+costsheet_usage_tracking:
+  topic: "events"
+  rate_limit: 1
+  consumer_group: "v1_costsheet_usage_tracking_service"
+
+costsheet_usage_tracking_lazy:
+  topic: "events_lazy"
+  rate_limit: 1
+  consumer_group: "v1_costsheet_usage_tracking_service_lazy"
+
+wallet_balance_alert:
+  topic: "wallet_alert"
+  rate_limit: 1
+  consumer_group: "v1_wallet_alert_service"
+
+sentry:
+  enabled: false
+  dsn: ""
+  environment: "production"
+  sample_rate: 1.0
+
+pyroscope:
+  enabled: false
+  server_address: ""
+  application_name: "flexprice"
+
+dynamodb:
+  in_use: false
+  region: "us-east-1"
+  event_table_name: "events"
+
+billing:
+  tenant_id: ""
+  environment_id: ""
+
+s3:
+  enabled: false
+  region: "ap-south-1"
+  invoice:
+    bucket: "flexprice-invoices"
+    presign_expiry_duration: "1h"
+    key_prefix: ""
+
+cache:
+  enabled: false
+
+feature_flag:
+  enable_feature_usage_for_analytics: true
+  force_v1_for_tenant: ""
+
+email:
+  enabled: false
+  resend_api_key: ""
+  from_address: ""
+  reply_to: ""
+  calendar_url: ""
+
+oauth:
+  redirect_uri: ""
+
+rbac:
+  roles_config_path: "config/rbac/roles.json"
+
+tenbyte:
+  signoz:
+    enabled: true
+    endpoint: "127.0.0.1:4317"
+    service_name: "tenbyte-billing"
+    environment: "production"
+    sample_rate: 1.0
+    insecure: true
+
+sslcommerz:
+  base_url: "https://securepay.sslcommerz.com"
+  session_api: "https://securepay.sslcommerz.com/gwprocess/v4/api.php"
+  validation_api: "https://securepay.sslcommerz.com/validator/api/validationserverAPI.php"
+  ipn_url: "https://api-billing.tenbyte.io/v1/webhooks/sslcommerz/{tenant_id}/{env_id}"
+  success_url: "https://billing.tenbyte.io/billing/payment/success"
+  fail_url: "https://billing.tenbyte.io/billing/payment/fail"
+  cancel_url: "https://billing.tenbyte.io/billing/payment/cancel"

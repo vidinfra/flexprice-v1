@@ -548,7 +548,7 @@ func (s *walletService) TopUpWallet(ctx context.Context, walletID string, req *d
 	if req.TransactionReason == types.TransactionReasonPurchasedCreditInvoiced {
 		// This creates a PENDING wallet transaction and invoice
 		// No wallet balance update happens yet
-		walletTransactionID, invoiceID, err := s.handlePurchasedCreditInvoicedTransaction(
+		tx, invoiceID, err := s.handlePurchasedCreditInvoicedTransaction(
 			ctx,
 			walletID,
 			lo.ToPtr(idempotencyKey),
@@ -560,16 +560,10 @@ func (s *walletService) TopUpWallet(ctx context.Context, walletID string, req *d
 
 		s.Logger.Debugw("created pending credit purchase with invoice",
 			"wallet_id", walletID,
-			"wallet_transaction_id", walletTransactionID,
+			"wallet_transaction_id", tx.ID,
 			"invoice_id", invoiceID,
 			"credits", req.CreditsToAdd.String(),
 		)
-
-		// Get the wallet transaction
-		tx, err := s.WalletRepo.GetTransactionByID(ctx, walletTransactionID)
-		if err != nil {
-			return nil, err
-		}
 
 		// Get updated wallet
 		walletResp, err := s.GetWalletByID(ctx, walletID)
@@ -631,7 +625,7 @@ func (s *walletService) TopUpWallet(ctx context.Context, walletID string, req *d
 	}, nil
 }
 
-func (s *walletService) handlePurchasedCreditInvoicedTransaction(ctx context.Context, walletID string, idempotencyKey *string, req *dto.TopUpWalletRequest) (string, string, error) {
+func (s *walletService) handlePurchasedCreditInvoicedTransaction(ctx context.Context, walletID string, idempotencyKey *string, req *dto.TopUpWalletRequest) (*wallet.Transaction, string, error) {
 	// Initialize required services
 	invoiceService := NewInvoiceService(s.ServiceParams)
 
@@ -642,7 +636,7 @@ func (s *walletService) handlePurchasedCreditInvoicedTransaction(ctx context.Con
 	// Retrieve wallet and customer details
 	w, err := s.WalletRepo.GetWalletByID(ctx, walletID)
 	if err != nil {
-		return "", "", err
+		return nil, "", err
 	}
 
 	// Get invoice config setting to check auto_complete flag
@@ -652,7 +646,7 @@ func (s *walletService) handlePurchasedCreditInvoicedTransaction(ctx context.Con
 		types.SettingKeyInvoiceConfig,
 	)
 	if err != nil {
-		return "", "", err
+		return nil, "", err
 	}
 
 	// Check if auto-complete is enabled
@@ -664,7 +658,7 @@ func (s *walletService) handlePurchasedCreditInvoicedTransaction(ctx context.Con
 		"credits", req.CreditsToAdd.String(),
 	)
 
-	var walletTransactionID string
+	var walletTransaction *wallet.Transaction
 	var invoiceID string
 	err = s.DB.WithTx(ctx, func(ctx context.Context) error {
 		// Step 1: Create wallet transaction (pending or completed based on setting)
@@ -672,6 +666,9 @@ func (s *walletService) handlePurchasedCreditInvoicedTransaction(ctx context.Con
 		balanceAfter := w.CreditBalance
 		creditsAvailable := decimal.Zero
 		var description string
+		amount := s.GetCurrencyAmountFromCredits(req.CreditsToAdd, w.ConversionRate)
+		balanceBefore := w.Balance
+		balanceAfterAmount := balanceBefore
 
 		if autoCompleteEnabled {
 			// If auto-complete is enabled, create transaction as COMPLETED
@@ -679,6 +676,7 @@ func (s *walletService) handlePurchasedCreditInvoicedTransaction(ctx context.Con
 			balanceAfter = w.CreditBalance.Add(req.CreditsToAdd)
 			creditsAvailable = req.CreditsToAdd
 			description = lo.Ternary(req.Description != "", req.Description, "Purchased credits - auto-completed")
+			balanceAfterAmount = balanceBefore.Add(amount)
 		} else {
 			description = lo.Ternary(req.Description != "", req.Description, "Purchased credits - pending payment")
 		}
@@ -694,7 +692,7 @@ func (s *walletService) handlePurchasedCreditInvoicedTransaction(ctx context.Con
 			CustomerID:          w.CustomerID,
 			Type:                types.TransactionTypeCredit,
 			CreditAmount:        req.CreditsToAdd,
-			Amount:              s.GetCurrencyAmountFromCredits(req.CreditsToAdd, w.ConversionRate),
+			Amount:              amount,
 			TxStatus:            txStatus,
 			ReferenceType:       types.WalletTxReferenceTypeExternal,
 			ReferenceID:         lo.FromPtr(idempotencyKey),
@@ -704,6 +702,8 @@ func (s *walletService) handlePurchasedCreditInvoicedTransaction(ctx context.Con
 			Priority:            req.Priority,
 			IdempotencyKey:      lo.FromPtr(idempotencyKey),
 			EnvironmentID:       w.EnvironmentID,
+			BalanceBefore:       balanceBefore,
+			BalanceAfter:        balanceAfterAmount,
 			CreditBalanceBefore: w.CreditBalance,
 			CreditBalanceAfter:  balanceAfter,
 			CreditsAvailable:    creditsAvailable,
@@ -736,10 +736,9 @@ func (s *walletService) handlePurchasedCreditInvoicedTransaction(ctx context.Con
 			)
 		}
 
-		walletTransactionID = tx.ID
+		walletTransaction = tx
 
 		// Step 2: Create invoice for credit purchase with wallet_transaction_id in metadata
-		amount := s.GetCurrencyAmountFromCredits(req.CreditsToAdd, w.ConversionRate)
 		invoiceMetadata := make(types.Metadata)
 
 		// Copy existing metadata from request if provided
@@ -753,7 +752,7 @@ func (s *walletService) handlePurchasedCreditInvoicedTransaction(ctx context.Con
 		invoiceMetadata["auto_topup"] = lo.Ternary(req.Metadata != nil && req.Metadata["auto_topup"] == "true", "true", invoiceMetadata["auto_topup"])
 
 		// Add required fields
-		invoiceMetadata["wallet_transaction_id"] = walletTransactionID
+		invoiceMetadata["wallet_transaction_id"] = walletTransaction.ID
 		invoiceMetadata["wallet_id"] = walletID
 		invoiceMetadata["credits_amount"] = req.CreditsToAdd.String()
 		invoiceMetadata["auto_completed"] = fmt.Sprintf("%v", autoCompleteEnabled)
@@ -801,8 +800,8 @@ func (s *walletService) handlePurchasedCreditInvoicedTransaction(ctx context.Con
 		invoiceID = invoice.ID
 
 		if autoCompleteEnabled {
-			s.Logger.Infow("created auto-completed credit purchase",
-				"wallet_transaction_id", walletTransactionID,
+				s.Logger.Infow("created auto-completed credit purchase",
+					"wallet_transaction_id", walletTransaction.ID,
 				"invoice_id", invoice.ID,
 				"wallet_id", walletID,
 				"credits", req.CreditsToAdd.String(),
@@ -810,8 +809,8 @@ func (s *walletService) handlePurchasedCreditInvoicedTransaction(ctx context.Con
 				"payment_status", paymentStatus,
 			)
 		} else {
-			s.Logger.Infow("created pending credit purchase",
-				"wallet_transaction_id", walletTransactionID,
+				s.Logger.Infow("created pending credit purchase",
+					"wallet_transaction_id", walletTransaction.ID,
 				"invoice_id", invoice.ID,
 				"wallet_id", walletID,
 				"credits", req.CreditsToAdd.String(),
@@ -823,15 +822,15 @@ func (s *walletService) handlePurchasedCreditInvoicedTransaction(ctx context.Con
 	})
 
 	if err != nil {
-		return "", "", err
+		return nil, "", err
 	}
 
 	// If auto-completed, publish webhook event immediately
 	if autoCompleteEnabled {
-		s.publishInternalTransactionWebhookEvent(ctx, types.WebhookEventWalletTransactionCreated, walletTransactionID)
+		s.publishInternalTransactionWebhookEvent(ctx, types.WebhookEventWalletTransactionCreated, walletTransaction.ID)
 	}
 
-	return walletTransactionID, invoiceID, err
+	return walletTransaction, invoiceID, err
 }
 
 // CompletePurchasedCreditTransactionWithRetry completes a pending wallet transaction when payment succeeds
@@ -891,9 +890,9 @@ func (s *walletService) completePurchasedCreditTransaction(ctx context.Context, 
 			Mark(ierr.ErrNotFound)
 	}
 
-	// Validate transaction state
-	if tx.TxStatus != types.TransactionStatusPending {
-		s.Logger.Debugw("wallet transaction is not pending",
+	// Validate transaction state - allow pending or failed (failed means payment link creation failed but can be retried)
+	if tx.TxStatus != types.TransactionStatusPending && tx.TxStatus != types.TransactionStatusFailed {
+		s.Logger.Debugw("wallet transaction is not in completable state",
 			"wallet_transaction_id", walletTransactionID,
 			"current_status", tx.TxStatus,
 		)
@@ -904,8 +903,8 @@ func (s *walletService) completePurchasedCreditTransaction(ctx context.Context, 
 			)
 			return nil
 		}
-		return ierr.NewError("wallet transaction is not in pending state").
-			WithHint("Only pending transactions can be completed").
+		return ierr.NewError("wallet transaction is not in completable state").
+			WithHint("Only pending or failed transactions can be completed").
 			WithReportableDetails(map[string]interface{}{
 				"wallet_transaction_id": walletTransactionID,
 				"current_status":        tx.TxStatus,
@@ -1452,7 +1451,8 @@ func (s *walletService) processDebitOperation(ctx context.Context, req *wallet.W
 		}
 	}
 
-	if totalAvailable.LessThan(req.CreditAmount) {
+	// Skip balance check if AllowNegativeBalance is set (used for overage billing)
+	if !req.AllowNegativeBalance && totalAvailable.LessThan(req.CreditAmount) {
 		return ierr.NewError("insufficient balance").
 			WithHint("Insufficient balance to process debit operation").
 			WithReportableDetails(map[string]interface{}{
@@ -1502,14 +1502,14 @@ func (s *walletService) processWalletOperation(ctx context.Context, req *wallet.
 
 	finalBalance := s.GetCurrencyAmountFromCredits(newCreditBalance, w.ConversionRate)
 
-	// Create transaction record
-	tx := &wallet.Transaction{
-		ID:                  types.GenerateUUIDWithPrefix(types.UUID_PREFIX_WALLET_TRANSACTION),
-		WalletID:            req.WalletID,
-		CustomerID:          w.CustomerID,
-		Type:                req.Type,
-		Amount:              req.Amount,
-		CreditAmount:        req.CreditAmount,
+		// Create transaction record
+		tx := &wallet.Transaction{
+			ID:                  types.GenerateUUIDWithPrefix(types.UUID_PREFIX_WALLET_TRANSACTION),
+			WalletID:            req.WalletID,
+			CustomerID:          w.CustomerID,
+			Type:                req.Type,
+			Amount:              req.Amount,
+			CreditAmount:        req.CreditAmount,
 		ReferenceType:       req.ReferenceType,
 		ReferenceID:         req.ReferenceID,
 		Description:         req.Description,
@@ -1517,11 +1517,13 @@ func (s *walletService) processWalletOperation(ctx context.Context, req *wallet.
 		TxStatus:            types.TransactionStatusCompleted,
 		TransactionReason:   req.TransactionReason,
 		ExpiryDate:          types.ParseYYYYMMDDToDate(req.ExpiryDate),
-		Priority:            req.Priority,
-		CreditBalanceBefore: w.CreditBalance,
-		CreditBalanceAfter:  newCreditBalance,
-		Currency:            w.Currency,
-		EnvironmentID:       types.GetEnvironmentID(ctx),
+			Priority:            req.Priority,
+			BalanceBefore:       w.Balance,
+			BalanceAfter:        finalBalance,
+			CreditBalanceBefore: w.CreditBalance,
+			CreditBalanceAfter:  newCreditBalance,
+			Currency:            w.Currency,
+			EnvironmentID:       types.GetEnvironmentID(ctx),
 		IdempotencyKey:      req.IdempotencyKey,
 		BaseModel:           types.GetDefaultBaseModel(ctx),
 	}
@@ -1686,10 +1688,19 @@ func (s *walletService) GetWalletTransactionByID(ctx context.Context, transactio
 }
 
 func (s *walletService) publishInternalTransactionWebhookEvent(ctx context.Context, eventName string, transactionID string) {
+	tenantID := types.GetTenantID(ctx)
+	environmentID := types.GetEnvironmentID(ctx)
+
+	s.Logger.Infow("publishing internal transaction webhook event",
+		"event_name", eventName,
+		"transaction_id", transactionID,
+		"tenant_id", tenantID,
+		"environment_id", environmentID,
+	)
 
 	webhookPayload, err := json.Marshal(webhookDto.InternalTransactionEvent{
 		TransactionID: transactionID,
-		TenantID:      types.GetTenantID(ctx),
+		TenantID:      tenantID,
 	})
 
 	if err != nil {
@@ -2212,12 +2223,35 @@ func (s *walletService) GetWalletBalanceV2(ctx context.Context, walletID string)
 				return nil, err
 			}
 
+			// Deduct already-invoiced overage amounts to prevent double counting
+			// Overage invoices are created in real-time and should be subtracted from pending charges
+			overageInvoiced, err := billingService.GetOverageInvoicedAmount(ctx, sub.ID, periodStart, periodEnd)
+			if err != nil {
+				s.Logger.Warnw("failed to get overage invoiced amount, proceeding without deduction",
+					"error", err,
+					"subscription_id", sub.ID)
+				overageInvoiced = decimal.Zero
+			}
+
+			// Adjust usage total by subtracting overage already invoiced
+			adjustedUsageTotal := usageTotal.Sub(overageInvoiced)
+			if adjustedUsageTotal.LessThan(decimal.Zero) {
+				// Overage exceeds calculated usage (shouldn't happen, but protect against it)
+				s.Logger.Warnw("overage invoiced exceeds usage total in wallet balance, setting to zero",
+					"subscription_id", sub.ID,
+					"usage_total", usageTotal.String(),
+					"overage_invoiced", overageInvoiced.String())
+				adjustedUsageTotal = decimal.Zero
+			}
+
 			s.Logger.Infow("subscription charges details",
 				"subscription_id", sub.ID,
 				"usage_total", usageTotal,
+				"overage_invoiced", overageInvoiced,
+				"adjusted_usage_total", adjustedUsageTotal,
 				"num_usage_charges", len(usageCharges))
 
-			totalPendingCharges = totalPendingCharges.Add(usageTotal)
+			totalPendingCharges = totalPendingCharges.Add(adjustedUsageTotal)
 		}
 	}
 
@@ -2377,14 +2411,14 @@ func (s *walletService) CheckWalletBalanceAlert(ctx context.Context, req *wallet
 				"alert_enabled", w.AlertEnabled,
 				"event_id", req.ID,
 			)
-			// Trigger auto top-up if enabled
-			err := s.checkAutoTopup(ctx, w, lo.FromPtr(balance.RealTimeCreditBalance))
-			if err != nil {
-				s.Logger.Errorw("failed to trigger auto top-up",
-					"error", err,
-					"wallet_id", w.ID,
-				)
-			}
+			// NOTE: Auto top-up is handled by external service (api.tenbyte.com) via webhook
+			// err := s.checkAutoTopup(ctx, w, lo.FromPtr(balance.RealTimeCreditBalance))
+			// if err != nil {
+			// 	s.Logger.Errorw("failed to trigger auto top-up",
+			// 		"error", err,
+			// 		"wallet_id", w.ID,
+			// 	)
+			// }
 			continue
 		}
 
@@ -2614,15 +2648,15 @@ func (s *walletService) CheckWalletBalanceAlert(ctx context.Context, req *wallet
 			"event_id", req.ID,
 		)
 
-		// Check auto top-up
-		err = s.checkAutoTopup(ctx, w, lo.FromPtr(balance.RealTimeCreditBalance))
-		if err != nil {
-			s.Logger.Errorw("failed to trigger auto top-up",
-				"error", err,
-				"wallet_id", w.ID,
-			)
-			continue
-		}
+		// NOTE: Auto top-up is handled by external service (api.tenbyte.com) via webhook
+		// err = s.checkAutoTopup(ctx, w, lo.FromPtr(balance.RealTimeCreditBalance))
+		// if err != nil {
+		// 	s.Logger.Errorw("failed to trigger auto top-up",
+		// 		"error", err,
+		// 		"wallet_id", w.ID,
+		// 	)
+		// 	continue
+		// }
 	}
 	s.Logger.Infow("completed wallet balance alert check for customer",
 		"customer_id", req.CustomerID,

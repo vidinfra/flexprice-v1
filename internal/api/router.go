@@ -9,6 +9,7 @@ import (
 	"github.com/flexprice/flexprice/internal/rbac"
 	"github.com/flexprice/flexprice/internal/rest/middleware"
 	"github.com/flexprice/flexprice/internal/service"
+	"github.com/flexprice/flexprice/internal/tenbyte/signoz" // Tenbyte: SigNoz tracing
 	"github.com/gin-gonic/gin"
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
@@ -64,15 +65,16 @@ type Handlers struct {
 	CronKafkaLagMonitoring *cron.KafkaLagMonitoringHandler
 }
 
-func NewRouter(handlers Handlers, cfg *config.Configuration, logger *logger.Logger, secretService service.SecretService, envAccessService service.EnvAccessService, rbacService *rbac.RBACService) *gin.Engine {
+func NewRouter(handlers Handlers, cfg *config.Configuration, logger *logger.Logger, secretService service.SecretService, envAccessService service.EnvAccessService, rbacService *rbac.RBACService, signozService *signoz.Service) *gin.Engine {
 	// gin.SetMode(gin.ReleaseMode)
 
 	router := gin.Default()
 	router.Use(
 		middleware.RequestIDMiddleware,
-		middleware.CORSMiddleware,
+		middleware.CORSMiddleware(cfg.Server.AllowedOrigins),
 		middleware.SentryMiddleware(cfg),    // Add Sentry middleware
 		middleware.PyroscopeMiddleware(cfg), // Add Pyroscope middleware
+		signozService.HTTPMiddleware(),      // Tenbyte: SigNoz tracing middleware
 	)
 
 	// Initialize permission middleware
@@ -509,6 +511,8 @@ func NewRouter(handlers Handlers, cfg *config.Configuration, logger *logger.Logg
 		webhooks.POST("/quickbooks/:tenant_id/:environment_id", handlers.Webhook.HandleQuickBooksWebhook)
 		// Nomod webhook endpoint: POST /v1/webhooks/nomod/{tenant_id}/{environment_id}
 		webhooks.POST("/nomod/:tenant_id/:environment_id", handlers.Webhook.HandleNomodWebhook)
+		// SSLCommerz IPN webhook endpoint: POST /v1/webhooks/sslcommerz/{tenant_id}/{environment_id}
+		webhooks.POST("/sslcommerz/:tenant_id/:environment_id", handlers.Webhook.HandleSSLCommerzWebhook)
 	}
 
 	// Cron routes

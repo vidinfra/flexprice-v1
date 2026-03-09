@@ -116,6 +116,11 @@ func NewPayloadBuilderFactory(services *Services) PayloadBuilderFactory {
 		return NewWalletPayloadBuilder(f.services)
 	}
 
+	// wallet negative balance builder (for overage billing)
+	f.builders[types.WebhookEventWalletBalanceNegative] = func() PayloadBuilder {
+		return NewWalletNegativeBalancePayloadBuilder(f.services)
+	}
+
 	// customer builders
 	f.builders[types.WebhookEventCustomerCreated] = func() PayloadBuilder {
 		return NewCustomerPayloadBuilder(f.services)

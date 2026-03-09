@@ -23,6 +23,7 @@ import (
 	"github.com/flexprice/flexprice/internal/pubsub"
 	"github.com/flexprice/flexprice/internal/pubsub/kafka"
 	pubsubRouter "github.com/flexprice/flexprice/internal/pubsub/router"
+	"github.com/flexprice/flexprice/internal/sentry"
 	"github.com/flexprice/flexprice/internal/types"
 	"github.com/samber/lo"
 	"github.com/shopspring/decimal"
@@ -351,6 +352,7 @@ func (s *eventPostProcessingService) generateUniqueHash(event *events.Event, met
 
 func (s *eventPostProcessingService) prepareProcessedEvents(ctx context.Context, event *events.Event) ([]*events.ProcessedEvent, error) {
 	subscriptionService := NewSubscriptionService(s.ServiceParams)
+	sentrySvc := sentry.NewSentryService(s.Config, s.Logger)
 
 	// Create a base processed event
 	baseProcessedEvent := event.ToProcessedEvent()
@@ -381,7 +383,7 @@ func (s *eventPostProcessingService) prepareProcessedEvents(ctx context.Context,
 	filter := types.NewSubscriptionFilter()
 	filter.CustomerID = customer.ID
 	filter.WithLineItems = true
-	filter.Expand = lo.ToPtr(string(types.ExpandPrices) + "," + string(types.ExpandMeters) + "," + string(types.ExpandFeatures))
+	filter.Expand = lo.ToPtr(string(types.ExpandPrices) + "," + string(types.ExpandMeters))
 	filter.SubscriptionStatus = []types.SubscriptionStatus{
 		types.SubscriptionStatusActive,
 		types.SubscriptionStatusTrialing,
@@ -671,15 +673,135 @@ func (s *eventPostProcessingService) prepareProcessedEvents(ctx context.Context,
 			tierSnapshot := decimal.Zero
 			processedEventCopy.TierSnapshot = tierSnapshot
 
+			// For MAX aggregation, we only charge for incremental increases
+			// i.e., only when the new value exceeds the current max
+			//
+			// NOTE on eventual consistency: Under heavy load, concurrent events may see
+			// stale currentMax values due to ClickHouse merge lag. Mitigations:
+			// 1. Query uses FINAL modifier for read consistency
+			// 2. ReplacingMergeTree deduplicates by event ID at merge time
+			// 3. Overage invoices use fixed threshold amounts, not summed event costs
+			// 4. Final billing recalculates from MAX(qty_total), not summed deltas
+			var costBillableQty = billableQty
+			if match.Meter.Aggregation.Type == types.AggregationMax {
+				currentMax, err := s.processedEventRepo.GetCurrentMaxQuantity(
+					ctx,
+					event.TenantID,
+					event.EnvironmentID,
+					sub.ID,
+					match.Meter.ID,
+					periodID,
+				)
+				if err != nil {
+					s.Logger.Errorw("failed to get current max quantity for MAX aggregation",
+						"error", err,
+						"event_id", event.ID,
+						"meter_id", match.Meter.ID,
+						"subscription_id", sub.ID,
+						"period_id", periodID,
+					)
+					// Continue with full quantity on error to avoid losing charges
+				} else {
+					// Only charge for the incremental delta above current max
+					if quantity.GreaterThan(currentMax) {
+						costBillableQty = quantity.Sub(currentMax)
+						s.Logger.Debugw("MAX aggregation: new max reached, charging incremental delta",
+							"event_id", event.ID,
+							"meter_id", match.Meter.ID,
+							"current_max", currentMax.String(),
+							"new_value", quantity.String(),
+							"delta_charged", costBillableQty.String(),
+						)
+					} else {
+						// New value is not higher than current max, no charge
+						costBillableQty = decimal.Zero
+						s.Logger.Debugw("MAX aggregation: value not higher than current max, no charge",
+							"event_id", event.ID,
+							"meter_id", match.Meter.ID,
+							"current_max", currentMax.String(),
+							"new_value", quantity.String(),
+						)
+					}
+				}
+			}
+
 			// Calculate cost details using the price service
 			// since per event price can be very small, we don't round the cost
 			priceService := NewPriceService(s.ServiceParams)
-			costDetails := priceService.CalculateCostWithBreakup(ctx, match.Price, billableQty, false)
+			var costDetails dto.CostBreakup
+
+			// For TIERED billing with SUM aggregation, calculate incremental cost based on cumulative usage
+			// This ensures each event's cost reflects its position in the tier structure
+			if match.Price.BillingModel == types.BILLING_MODEL_TIERED && match.Meter.Aggregation.Type == types.AggregationSum {
+				// Get cumulative usage before this event
+				cumulativeQty, err := s.processedEventRepo.GetCurrentSumQuantity(
+					ctx,
+					event.TenantID,
+					event.EnvironmentID,
+					sub.ID,
+					match.Meter.ID,
+					periodID,
+				)
+				if err != nil {
+					s.Logger.Errorw("failed to get cumulative quantity for TIERED pricing",
+						"error", err,
+						"event_id", event.ID,
+						"meter_id", match.Meter.ID,
+						"subscription_id", sub.ID,
+						"period_id", periodID,
+					)
+					// Fall back to simple cost calculation on error
+					costDetails = priceService.CalculateCostWithBreakup(ctx, match.Price, costBillableQty, false)
+				} else {
+					// Calculate incremental cost: cost(cumulative + new) - cost(cumulative)
+					newTotalQty := cumulativeQty.Add(costBillableQty)
+					costAtNewTotal := priceService.CalculateCostWithBreakup(ctx, match.Price, newTotalQty, false)
+					costAtCumulative := priceService.CalculateCostWithBreakup(ctx, match.Price, cumulativeQty, false)
+					incrementalCost := costAtNewTotal.FinalCost.Sub(costAtCumulative.FinalCost)
+
+					// Store the cumulative quantity as tier snapshot for reference
+					processedEventCopy.TierSnapshot = cumulativeQty
+
+					costDetails = dto.CostBreakup{
+						FinalCost:         incrementalCost,
+						EffectiveUnitCost: costAtNewTotal.EffectiveUnitCost,
+						SelectedTierIndex: costAtNewTotal.SelectedTierIndex,
+						TierUnitAmount:    costAtNewTotal.TierUnitAmount,
+					}
+
+					s.Logger.Debugw("TIERED pricing: calculated incremental cost",
+						"event_id", event.ID,
+						"meter_id", match.Meter.ID,
+						"cumulative_qty", cumulativeQty.String(),
+						"event_qty", costBillableQty.String(),
+						"new_total_qty", newTotalQty.String(),
+						"cost_at_cumulative", costAtCumulative.FinalCost.String(),
+						"cost_at_new_total", costAtNewTotal.FinalCost.String(),
+						"incremental_cost", incrementalCost.String(),
+					)
+				}
+			} else {
+				costDetails = priceService.CalculateCostWithBreakup(ctx, match.Price, costBillableQty, false)
+			}
 
 			// Set cost details on the processed event
 			processedEventCopy.UnitCost = costDetails.EffectiveUnitCost
 			processedEventCopy.Cost = costDetails.FinalCost
 			processedEventCopy.Currency = match.Price.Currency
+
+			// Process overage billing if enabled
+			// This checks if accumulated cost meets threshold and creates invoice if needed
+			overageBillingService := NewOverageBillingService(s.ServiceParams, s.processedEventRepo)
+			if err := overageBillingService.ProcessEventOverage(ctx, processedEventCopy, sub); err != nil {
+				s.Logger.Errorw("failed to process overage billing",
+					"error", err,
+					"event_id", event.ID,
+					"subscription_id", sub.ID,
+				)
+				// Capture in Sentry for alerting on repeated failures
+				sentrySvc.CaptureException(err)
+				// Don't fail event processing - overage billing errors are monitored via Sentry
+			}
 
 			processedEventsPerSub = append(processedEventsPerSub, processedEventCopy)
 		}
@@ -700,14 +822,15 @@ func (s *eventPostProcessingService) prepareProcessedEvents(ctx context.Context,
 
 // isSupportedAggregationType checks if the aggregation type is supported for post-processing
 func (s *eventPostProcessingService) isSupportedAggregationType(agg types.AggregationType) bool {
-	return agg == types.AggregationCount || agg == types.AggregationSum
+	return agg == types.AggregationCount || agg == types.AggregationSum || agg == types.AggregationMax
 }
 
 // isSupportedBillingModel checks if the billing model is supported for post-processing
 func (s *eventPostProcessingService) isSupportedBillingModel(billingModel types.BillingModel) bool {
-	// We support usage-based billing models
-	// FLAT_FEE is not appropriate for usage-based billing as it doesn't depend on consumption
-	return billingModel == types.BILLING_MODEL_FLAT_FEE
+	// Support FLAT_FEE and TIERED billing models for usage-based post-processing
+	// FLAT_FEE means a flat rate per unit of usage (e.g., $0.01 per API call)
+	// TIERED means pricing varies based on usage tiers (volume or slab)
+	return billingModel == types.BILLING_MODEL_FLAT_FEE || billingModel == types.BILLING_MODEL_TIERED
 }
 
 // isSupportedAggregationForPostProcessing checks if the aggregation type and billing model are supported
@@ -811,21 +934,23 @@ func (s *eventPostProcessingService) extractQuantityFromEvent(
 		// For count, always return 1 and empty string for field value
 		return decimal.NewFromInt(1), ""
 
-	case types.AggregationSum:
+	case types.AggregationSum, types.AggregationMax:
 		if meter.Aggregation.Field == "" {
-			s.Logger.Warnw("sum aggregation with empty field name",
+			s.Logger.Warnw("aggregation with empty field name",
 				"event_id", event.ID,
 				"meter_id", meter.ID,
+				"aggregation_type", meter.Aggregation.Type,
 			)
 			return decimal.Zero, ""
 		}
 
 		val, ok := event.Properties[meter.Aggregation.Field]
 		if !ok {
-			s.Logger.Warnw("property not found for sum aggregation",
+			s.Logger.Warnw("property not found for aggregation",
 				"event_id", event.ID,
 				"meter_id", meter.ID,
 				"field", meter.Aggregation.Field,
+				"aggregation_type", meter.Aggregation.Type,
 			)
 			return decimal.Zero, ""
 		}
@@ -907,12 +1032,13 @@ func (s *eventPostProcessingService) extractQuantityFromEvent(
 		default:
 			// Try to convert to string representation
 			stringValue = fmt.Sprintf("%v", v)
-			s.Logger.Warnw("unknown type for sum aggregation - cannot convert to decimal",
+			s.Logger.Warnw("unknown type for aggregation - cannot convert to decimal",
 				"event_id", event.ID,
 				"meter_id", meter.ID,
 				"field", meter.Aggregation.Field,
 				"type", fmt.Sprintf("%T", v),
 				"value", stringValue,
+				"aggregation_type", meter.Aggregation.Type,
 			)
 			return decimal.Zero, stringValue
 		}
@@ -920,7 +1046,7 @@ func (s *eventPostProcessingService) extractQuantityFromEvent(
 		return decimalValue, stringValue
 
 	default:
-		// We're only supporting COUNT and SUM for now
+		// We're only supporting COUNT, SUM, and MAX for now
 		s.Logger.Warnw("unsupported aggregation type",
 			"event_id", event.ID,
 			"meter_id", meter.ID,

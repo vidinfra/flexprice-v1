@@ -1,0 +1,30 @@
+[Unit]
+Description=FlexPrice Frontend Dashboard
+After=network.target
+
+[Service]
+Type=simple
+User=flexprice
+Group=flexprice
+WorkingDirectory=/opt/flex-front
+ExecStart=/usr/bin/node /opt/flex-front/server.js
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+# Environment
+Environment=NODE_ENV=production
+Environment=PORT=5173
+
+# Resource limits
+LimitNOFILE=65535
+MemoryMax=512M
+
+# Security
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target

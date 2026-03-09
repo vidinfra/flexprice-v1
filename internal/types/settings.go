@@ -25,6 +25,7 @@ const (
 	SettingKeyEnvConfig                SettingKey = "env_config"
 	SettingKeyCustomerOnboarding       SettingKey = "customer_onboarding"
 	SettingKeyWalletBalanceAlertConfig SettingKey = "wallet_balance_alert_config"
+	SettingKeyOverageBillingConfig     SettingKey = "overage_billing_config"
 )
 
 func (s *SettingKey) Validate() error {
@@ -36,6 +37,7 @@ func (s *SettingKey) Validate() error {
 		SettingKeyEnvConfig,
 		SettingKeyCustomerOnboarding,
 		SettingKeyWalletBalanceAlertConfig,
+		SettingKeyOverageBillingConfig,
 	}
 
 	if !lo.Contains(allowedKeys, *s) {
@@ -91,6 +93,22 @@ type EnvConfig struct {
 // Validate implements SettingConfig interface
 func (c EnvConfig) Validate() error {
 	return validator.ValidateRequest(c)
+}
+
+// OverageBillingConfig represents configuration for real-time overage billing
+type OverageBillingConfig struct {
+	Enabled          bool            `json:"enabled"`
+	InvoiceThreshold decimal.Decimal `json:"invoice_threshold"` // Threshold in base currency (e.g., $5.00)
+}
+
+// Validate implements SettingConfig interface
+func (c OverageBillingConfig) Validate() error {
+	if c.InvoiceThreshold.IsNegative() {
+		return ierr.NewError("invoice_threshold must be non-negative").
+			WithHint("Please provide a valid invoice threshold").
+			Mark(ierr.ErrValidation)
+	}
+	return nil
 }
 
 // TenantEnvConfig represents a generic configuration for a specific tenant and environment
@@ -151,6 +169,11 @@ func GetDefaultSettings() (map[SettingKey]DefaultSettingValue, error) {
 		},
 	}
 
+	defaultOverageBillingConfig := OverageBillingConfig{
+		Enabled:          true,
+		InvoiceThreshold: decimal.NewFromFloat(20.0), // Default $20.00 threshold (Tenbyte: changed from $5.00)
+	}
+
 	// Convert typed structs to maps using centralized utility
 	invoiceConfigMap, err := utils.ToMap(defaultInvoiceConfig)
 	if err != nil {
@@ -172,6 +195,11 @@ func GetDefaultSettings() (map[SettingKey]DefaultSettingValue, error) {
 	customerOnboardingConfigMap := defaultCustomerOnboardingConfig
 
 	defaultWalletBalanceAlertConfigMap, err := utils.ToMap(defaultWalletBalanceAlertConfig)
+	if err != nil {
+		return nil, err
+	}
+
+	overageBillingConfigMap, err := utils.ToMap(defaultOverageBillingConfig)
 	if err != nil {
 		return nil, err
 	}
@@ -206,6 +234,11 @@ func GetDefaultSettings() (map[SettingKey]DefaultSettingValue, error) {
 			Key:          SettingKeyWalletBalanceAlertConfig,
 			DefaultValue: defaultWalletBalanceAlertConfigMap,
 			Description:  "Default configuration for wallet balance alert configuration",
+		},
+		SettingKeyOverageBillingConfig: {
+			Key:          SettingKeyOverageBillingConfig,
+			DefaultValue: overageBillingConfigMap,
+			Description:  "Configuration for real-time overage billing with threshold-based invoicing",
 		},
 	}, nil
 }
@@ -280,6 +313,13 @@ func ValidateSettingValue(key SettingKey, value map[string]interface{}) error {
 
 	case SettingKeyWalletBalanceAlertConfig:
 		config, err := utils.ToStruct[AlertConfig](value)
+		if err != nil {
+			return err
+		}
+		return config.Validate()
+
+	case SettingKeyOverageBillingConfig:
+		config, err := utils.ToStruct[OverageBillingConfig](value)
 		if err != nil {
 			return err
 		}

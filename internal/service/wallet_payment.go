@@ -32,6 +32,9 @@ type WalletPaymentOptions struct {
 	MaxWalletsToUse int
 	// AdditionalMetadata to include in payment requests
 	AdditionalMetadata types.Metadata
+	// AllowNegativeBalance allows payment even when wallet has zero/negative balance
+	// Used for overage billing where wallet can go negative
+	AllowNegativeBalance bool
 }
 
 // DefaultWalletPaymentOptions returns the default options for wallet payments
@@ -132,13 +135,16 @@ func (s *walletPaymentService) GetWalletsForPayment(
 		return nil, err
 	}
 
-	// Filter active wallets with matching currency and positive balance
+	// Filter active wallets with matching currency
+	// If AllowNegativeBalance is true, include wallets regardless of balance (for overage billing)
 	activeWallets := make([]*wallet.Wallet, 0)
 	for _, w := range wallets {
 		if w.WalletStatus == types.WalletStatusActive &&
-			types.IsMatchingCurrency(w.Currency, currency) &&
-			w.Balance.GreaterThan(decimal.Zero) {
-			activeWallets = append(activeWallets, w)
+			types.IsMatchingCurrency(w.Currency, currency) {
+			// Include wallet if it has positive balance OR if negative balance is allowed
+			if w.Balance.GreaterThan(decimal.Zero) || options.AllowNegativeBalance {
+				activeWallets = append(activeWallets, w)
+			}
 		}
 	}
 
@@ -231,7 +237,7 @@ func (s *walletPaymentService) processWalletPayments(
 		}
 
 		// Calculate how much this wallet can pay based on its price type restrictions
-		allowedAmount := s.calculateAllowedPaymentAmount(w, priceTypeAmounts, remainingAmount)
+		allowedAmount := s.calculateAllowedPaymentAmountWithOptions(w, priceTypeAmounts, remainingAmount, options)
 		if allowedAmount.IsZero() {
 			s.Logger.Infow("wallet cannot pay any amount due to price type restrictions",
 				"wallet_id", w.ID,
@@ -240,13 +246,20 @@ func (s *walletPaymentService) processWalletPayments(
 			continue
 		}
 
-		paymentAmount := decimal.Min(allowedAmount, w.Balance)
+		// When AllowNegativeBalance is true, use the full allowed amount
+		// Otherwise, limit to wallet balance
+		var paymentAmount decimal.Decimal
+		if options.AllowNegativeBalance {
+			paymentAmount = allowedAmount
+		} else {
+			paymentAmount = decimal.Min(allowedAmount, w.Balance)
+		}
 		if paymentAmount.IsZero() {
 			continue
 		}
 
 		// Create and process the payment
-		if err := s.createWalletPayment(ctx, inv, w, paymentAmount, options.AdditionalMetadata, paymentService); err != nil {
+		if err := s.createWalletPayment(ctx, inv, w, paymentAmount, options, paymentService); err != nil {
 			s.Logger.Errorw("failed to create wallet payment",
 				"error", err,
 				"invoice_id", inv.ID,
@@ -270,7 +283,7 @@ func (s *walletPaymentService) createWalletPayment(
 	inv *invoice.Invoice,
 	w *wallet.Wallet,
 	paymentAmount decimal.Decimal,
-	additionalMetadata types.Metadata,
+	options WalletPaymentOptions,
 	paymentService PaymentService,
 ) error {
 	// Create payment metadata
@@ -280,20 +293,21 @@ func (s *walletPaymentService) createWalletPayment(
 	}
 
 	// Add additional metadata if provided
-	for k, v := range additionalMetadata {
+	for k, v := range options.AdditionalMetadata {
 		metadata[k] = v
 	}
 
 	// Create payment request
 	paymentReq := dto.CreatePaymentRequest{
-		Amount:            paymentAmount,
-		Currency:          inv.Currency,
-		PaymentMethodType: types.PaymentMethodTypeCredits,
-		PaymentMethodID:   w.ID,
-		DestinationType:   types.PaymentDestinationTypeInvoice,
-		DestinationID:     inv.ID,
-		ProcessPayment:    true,
-		Metadata:          metadata,
+		Amount:                     paymentAmount,
+		Currency:                   inv.Currency,
+		PaymentMethodType:          types.PaymentMethodTypeCredits,
+		PaymentMethodID:            w.ID,
+		DestinationType:            types.PaymentDestinationTypeInvoice,
+		DestinationID:              inv.ID,
+		ProcessPayment:             true,
+		Metadata:                   metadata,
+		AllowNegativeWalletBalance: options.AllowNegativeBalance,
 	}
 
 	_, err := paymentService.CreatePayment(ctx, &paymentReq)
@@ -338,8 +352,23 @@ func (s *walletPaymentService) calculateAllowedPaymentAmount(
 	priceTypeAmounts map[string]decimal.Decimal,
 	remainingAmount decimal.Decimal,
 ) decimal.Decimal {
+	return s.calculateAllowedPaymentAmountWithOptions(w, priceTypeAmounts, remainingAmount, DefaultWalletPaymentOptions())
+}
+
+// calculateAllowedPaymentAmountWithOptions calculates how much a wallet can pay based on its price type restrictions
+// When AllowNegativeBalance is true, the payment is not limited by wallet balance
+func (s *walletPaymentService) calculateAllowedPaymentAmountWithOptions(
+	w *wallet.Wallet,
+	priceTypeAmounts map[string]decimal.Decimal,
+	remainingAmount decimal.Decimal,
+	options WalletPaymentOptions,
+) decimal.Decimal {
 	// If wallet has no allowed price types, use default (ALL)
 	if len(w.Config.AllowedPriceTypes) == 0 {
+		// When AllowNegativeBalance is true, don't limit by wallet balance
+		if options.AllowNegativeBalance {
+			return remainingAmount
+		}
 		// Return the minimum of remaining amount and wallet balance
 		return decimal.Min(remainingAmount, w.Balance)
 	}
@@ -349,7 +378,10 @@ func (s *walletPaymentService) calculateAllowedPaymentAmount(
 	for _, allowedPriceType := range w.Config.AllowedPriceTypes {
 		switch allowedPriceType {
 		case types.WalletConfigPriceTypeAll:
-			// If ALL is allowed, wallet can pay the full remaining amount (up to its balance)
+			// If ALL is allowed, wallet can pay the full remaining amount
+			if options.AllowNegativeBalance {
+				return remainingAmount
+			}
 			return decimal.Min(remainingAmount, w.Balance)
 		case types.WalletConfigPriceTypeUsage:
 			// Add the remaining USAGE amount (only what's left to pay)
@@ -366,6 +398,10 @@ func (s *walletPaymentService) calculateAllowedPaymentAmount(
 		}
 	}
 
+	// When AllowNegativeBalance is true, don't limit by wallet balance
+	if options.AllowNegativeBalance {
+		return allowedAmount
+	}
 	// Return the minimum of allowed amount and wallet balance
 	// Don't limit by remainingAmount here as priceTypeAmounts already reflects what's left
 	return decimal.Min(allowedAmount, w.Balance)

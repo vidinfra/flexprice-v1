@@ -113,6 +113,16 @@ var commands = []Command{
 		Description: "Generate credit usage report for customers in a tenant/environment",
 		Run:         internal.GenerateCreditUsageReport,
 	},
+	{
+		Name:        "create-tenbyte-tenant",
+		Description: "Create tenbyte tenant with environments and API key",
+		Run:         internal.CreateTenantWithAPIKey,
+	},
+	{
+		Name:        "fix-missed-overage",
+		Description: "Fix missed overage billing for a subscription (creates missing invoices and debits wallet)",
+		Run:         internal.FixMissedOverageBillingFromEnv,
+	},
 }
 
 // runBulkReprocessEventsCommand wraps the bulk reprocess events with command line parameters
@@ -148,26 +158,27 @@ func runBulkReprocessEventsCommand() error {
 func main() {
 	// Define command line flags
 	var (
-		listCommands       bool
-		cmdName            string
-		email              string
-		tenant             string
-		metersFile         string
-		plansFile          string
-		tenantID           string
-		userID             string
-		password           string
-		environmentID      string
-		filePath           string
-		apiKey             string
-		externalCustomerID string
-		eventName          string
-		startTime          string
-		endTime            string
-		batchSize          string
-		dryRun             string
-		planID             string
-		addonID            string
+		listCommands        bool
+		cmdName             string
+		email               string
+		tenant              string
+		metersFile          string
+		plansFile           string
+		tenantID            string
+		userID              string
+		password            string
+		environmentID       string
+		filePath            string
+		apiKey              string
+		externalCustomerID  string
+		eventName           string
+		startTime           string
+		endTime             string
+		batchSize           string
+		dryRun              string
+		planID  string
+		addonID string
+		subscriptionID      string
 	)
 
 	flag.BoolVar(&listCommands, "list", false, "List all available commands")
@@ -190,6 +201,7 @@ func main() {
 	flag.StringVar(&batchSize, "batch-size", "100", "Batch size for reprocessing")
 	flag.StringVar(&dryRun, "dry-run", "false", "Dry run mode (true/false)")
 	flag.StringVar(&addonID, "addon-id", "", "Addon ID for operations")
+	flag.StringVar(&subscriptionID, "subscription-id", "", "Subscription ID for operations")
 	flag.Parse()
 
 	if listCommands {
@@ -258,6 +270,9 @@ func main() {
 	}
 	if dryRun != "" {
 		os.Setenv("DRY_RUN", dryRun)
+	}
+	if subscriptionID != "" {
+		os.Setenv("SUBSCRIPTION_ID", subscriptionID)
 	}
 
 	// Find and run the command

@@ -27,16 +27,25 @@ type Role struct {
 
 // NewRBACService loads roles.json from config and optimizes for fast lookups
 func NewRBACService(cfg *config.Configuration) (*RBACService, error) {
-	// Get roles path from config or use default
-	configPath := cfg.RBAC.RolesConfigPath
-	if configPath == "" {
-		configPath = "./config/rbac/roles.json"
+	// Get roles path from config or try sensible defaults
+	candidatePaths := []string{}
+	if cfg != nil && cfg.RBAC.RolesConfigPath != "" {
+		candidatePaths = append(candidatePaths, cfg.RBAC.RolesConfigPath)
 	}
+	// Prefer internal path where the repo stores the canonical file, then fallback to project-level config
+	candidatePaths = append(candidatePaths, "internal/config/rbac/roles.json", "./config/rbac/roles.json")
 
-	// Load JSON
-	data, err := os.ReadFile(configPath)
+	// Try each path until we successfully read the file
+	var data []byte
+	var err error
+	for _, p := range candidatePaths {
+		data, err = os.ReadFile(p)
+		if err == nil {
+			break
+		}
+	}
 	if err != nil {
-		return nil, fmt.Errorf("failed to read config: %w", err)
+		return nil, fmt.Errorf("failed to read roles config; tried paths %v: last error: %w", candidatePaths, err)
 	}
 
 	// Parse as: role_id -> role definition (with name, description, permissions)

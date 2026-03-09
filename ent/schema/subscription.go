@@ -155,6 +155,13 @@ func (Subscription) Fields() []ent.Field {
 			}).
 			Optional().
 			Comment("Gateway payment method ID for this subscription"),
+		field.String("invoice_cadence").
+			SchemaType(map[string]string{
+				"postgres": "varchar(50)",
+			}).
+			Default(string(types.InvoiceCadenceAdvance)).
+			GoType(types.InvoiceCadence("")).
+			Comment("Invoice cadence for this subscription"),
 		field.String("customer_timezone").
 			Default("UTC"),
 		field.String("proration_behavior").

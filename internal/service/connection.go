@@ -266,6 +266,29 @@ func (s *connectionService) encryptMetadata(encryptedSecretData types.Connection
 
 		encryptedMetadata.Nomod = nomodMeta
 
+	case types.SecretProviderSSLCommerz:
+		if encryptedSecretData.SSLCommerz == nil {
+			s.Logger.Warnw("SSLCommerz metadata is nil, cannot encrypt", "provider_type", providerType)
+			return types.ConnectionMetadata{}, ierr.NewError("SSLCommerz metadata is required").
+				WithHint("SSLCommerz connection requires encrypted_secret_data with store_id and store_password").
+				Mark(ierr.ErrValidation)
+		}
+		// Encrypt store ID
+		encryptedStoreID, err := s.encryptionService.Encrypt(encryptedSecretData.SSLCommerz.StoreID)
+		if err != nil {
+			return types.ConnectionMetadata{}, err
+		}
+		// Encrypt store password
+		encryptedStorePassword, err := s.encryptionService.Encrypt(encryptedSecretData.SSLCommerz.StorePassword)
+		if err != nil {
+			return types.ConnectionMetadata{}, err
+		}
+
+		encryptedMetadata.SSLCommerz = &types.SSLCommerzConnectionMetadata{
+			StoreID:       encryptedStoreID,
+			StorePassword: encryptedStorePassword,
+		}
+
 	default:
 		// For other providers or unknown types, use generic format
 		if encryptedSecretData.Generic != nil {
@@ -462,19 +485,20 @@ func (s *connectionService) UpdateConnection(ctx context.Context, id string, req
 		conn.SyncConfig = req.SyncConfig
 	}
 
-	// Update encrypted_secret_data if provided (e.g., webhook_verifier_token)
+	// Update encrypted_secret_data if provided (e.g., webhook_verifier_token, store credentials)
 	// Only process if there's actual provider-specific data (not just an empty wrapper struct)
-	if req.EncryptedSecretData != nil && req.EncryptedSecretData.QuickBooks != nil {
-		// Encrypt and merge the new secret data with existing data
-		encryptedMetadata, err := s.encryptMetadata(*req.EncryptedSecretData, conn.ProviderType)
-		if err != nil {
-			s.Logger.Errorw("failed to encrypt connection metadata during update", "error", err, "connection_id", id)
-			return nil, err
-		}
+	if req.EncryptedSecretData != nil {
+		// Handle QuickBooks updates
+		if req.EncryptedSecretData.QuickBooks != nil && conn.ProviderType == types.SecretProviderQuickBooks {
+			// Encrypt and merge the new secret data with existing data
+			encryptedMetadata, err := s.encryptMetadata(*req.EncryptedSecretData, conn.ProviderType)
+			if err != nil {
+				s.Logger.Errorw("failed to encrypt connection metadata during update", "error", err, "connection_id", id)
+				return nil, err
+			}
 
-		// Merge with existing encrypted_secret_data for QuickBooks
-		// This ensures we don't overwrite existing tokens (access_token, refresh_token, etc.)
-		if conn.ProviderType == types.SecretProviderQuickBooks {
+			// Merge with existing encrypted_secret_data for QuickBooks
+			// This ensures we don't overwrite existing tokens (access_token, refresh_token, etc.)
 			existingData := conn.EncryptedSecretData
 			if existingData.QuickBooks == nil {
 				existingData.QuickBooks = &types.QuickBooksConnectionMetadata{}
@@ -484,6 +508,49 @@ func (s *connectionService) UpdateConnection(ctx context.Context, id string, req
 				existingData.QuickBooks.WebhookVerifierToken = encryptedMetadata.QuickBooks.WebhookVerifierToken
 			}
 			conn.EncryptedSecretData = existingData
+		}
+
+		// Handle SSLCommerz updates
+		if req.EncryptedSecretData.SSLCommerz != nil && conn.ProviderType == types.SecretProviderSSLCommerz {
+			// Encrypt the new secret data
+			encryptedMetadata, err := s.encryptMetadata(*req.EncryptedSecretData, conn.ProviderType)
+			if err != nil {
+				s.Logger.Errorw("failed to encrypt SSLCommerz connection metadata during update", "error", err, "connection_id", id)
+				return nil, err
+			}
+
+			// Update the encrypted_secret_data with new SSLCommerz credentials
+			conn.EncryptedSecretData.SSLCommerz = encryptedMetadata.SSLCommerz
+		}
+
+		// Handle Stripe updates
+		if req.EncryptedSecretData.Stripe != nil && conn.ProviderType == types.SecretProviderStripe {
+			encryptedMetadata, err := s.encryptMetadata(*req.EncryptedSecretData, conn.ProviderType)
+			if err != nil {
+				s.Logger.Errorw("failed to encrypt Stripe connection metadata during update", "error", err, "connection_id", id)
+				return nil, err
+			}
+			conn.EncryptedSecretData.Stripe = encryptedMetadata.Stripe
+		}
+
+		// Handle Razorpay updates
+		if req.EncryptedSecretData.Razorpay != nil && conn.ProviderType == types.SecretProviderRazorpay {
+			encryptedMetadata, err := s.encryptMetadata(*req.EncryptedSecretData, conn.ProviderType)
+			if err != nil {
+				s.Logger.Errorw("failed to encrypt Razorpay connection metadata during update", "error", err, "connection_id", id)
+				return nil, err
+			}
+			conn.EncryptedSecretData.Razorpay = encryptedMetadata.Razorpay
+		}
+
+		// Handle Nomod updates
+		if req.EncryptedSecretData.Nomod != nil && conn.ProviderType == types.SecretProviderNomod {
+			encryptedMetadata, err := s.encryptMetadata(*req.EncryptedSecretData, conn.ProviderType)
+			if err != nil {
+				s.Logger.Errorw("failed to encrypt Nomod connection metadata during update", "error", err, "connection_id", id)
+				return nil, err
+			}
+			conn.EncryptedSecretData.Nomod = encryptedMetadata.Nomod
 		}
 	}
 

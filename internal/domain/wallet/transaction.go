@@ -17,6 +17,8 @@ type Transaction struct {
 	Type                types.TransactionType       `db:"type" json:"type"`
 	Amount              decimal.Decimal             `db:"amount" json:"amount" swaggertype:"string"`
 	CreditAmount        decimal.Decimal             `db:"credit_amount" json:"credit_amount" swaggertype:"string"`
+	BalanceBefore       decimal.Decimal             `db:"balance_before" json:"-"`
+	BalanceAfter        decimal.Decimal             `db:"balance_after" json:"-"`
 	CreditBalanceBefore decimal.Decimal             `db:"credit_balance_before" json:"credit_balance_before" swaggertype:"string"`
 	CreditBalanceAfter  decimal.Decimal             `db:"credit_balance_after" json:"credit_balance_after" swaggertype:"string"`
 	TxStatus            types.TransactionStatus     `db:"transaction_status" json:"transaction_status"`
@@ -60,6 +62,8 @@ func (t *Transaction) ToEnt() *ent.WalletTransaction {
 		Type:                t.Type,
 		Amount:              t.Amount,
 		CreditAmount:        t.CreditAmount,
+		BalanceBefore:       t.BalanceBefore,
+		BalanceAfter:        t.BalanceAfter,
 		CreditBalanceBefore: t.CreditBalanceBefore,
 		CreditBalanceAfter:  t.CreditBalanceAfter,
 		TransactionStatus:   t.TxStatus,
@@ -95,6 +99,8 @@ func TransactionFromEnt(e *ent.WalletTransaction) *Transaction {
 		Type:                e.Type,
 		Amount:              e.Amount,
 		CreditAmount:        e.CreditAmount,
+		BalanceBefore:       e.BalanceBefore,
+		BalanceAfter:        e.BalanceAfter,
 		TxStatus:            e.TransactionStatus,
 		ReferenceType:       e.ReferenceType,
 		ReferenceID:         e.ReferenceID,

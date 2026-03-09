@@ -40,6 +40,9 @@ type WalletOperation struct {
 	// For Expiry Credits, this is the ID of the parent credit transaction
 	// so that we can use the same credits for the expiry debit transaction
 	ParentCreditTxID string `json:"-"`
+	// AllowNegativeBalance allows the wallet balance to go negative
+	// Used for overage billing where debit operations should proceed even without sufficient balance
+	AllowNegativeBalance bool `json:"-"`
 }
 
 func (w *WalletOperation) Validate() error {

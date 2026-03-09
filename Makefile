@@ -140,13 +140,16 @@ init-kafka:
 		echo "Attempt $$i: Checking if Kafka is ready..."; \
 		if docker compose exec -T kafka kafka-topics --bootstrap-server kafka:9092 --list >/dev/null 2>&1; then \
 			echo "Kafka is ready!"; \
-			docker compose exec -T kafka kafka-topics --create --if-not-exists \
-				--bootstrap-server kafka:9092 \
-				--topic events \
-				--partitions 1 \
-				--replication-factor 1 \
-				--config cleanup.policy=delete \
-				--config retention.ms=604800000; \
+			for topic in events events_lazy events_post_processing events_post_processing_backfill system_events wallet_alert; do \
+				docker compose exec -T kafka kafka-topics --create --if-not-exists \
+					--bootstrap-server kafka:9092 \
+					--topic $$topic \
+					--partitions 1 \
+					--replication-factor 1 \
+					--config cleanup.policy=delete \
+					--config retention.ms=604800000 || true; \
+				echo "Created topic: $$topic"; \
+			done; \
 			echo "Kafka topics created successfully"; \
 			exit 0; \
 		fi; \

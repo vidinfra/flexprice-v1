@@ -25,6 +25,7 @@ import (
 	"github.com/flexprice/flexprice/internal/repository"
 	s3 "github.com/flexprice/flexprice/internal/s3"
 	"github.com/flexprice/flexprice/internal/sentry"
+	"github.com/flexprice/flexprice/internal/tenbyte/signoz"
 	"github.com/flexprice/flexprice/internal/service"
 	"github.com/flexprice/flexprice/internal/svix"
 	"github.com/flexprice/flexprice/internal/temporal"
@@ -89,6 +90,7 @@ func main() {
 			// Monitoring
 			sentry.NewSentryService,
 			pyroscope.NewPyroscopeService,
+			signoz.NewService,
 
 			// Cache
 			cache.Initialize,
@@ -255,6 +257,7 @@ func main() {
 		fx.Invoke(
 			sentry.RegisterHooks,
 			pyroscope.RegisterHooks,
+			signoz.RegisterHooks,
 			startServer,
 		),
 	)
@@ -359,8 +362,8 @@ func provideHandlers(
 	}
 }
 
-func provideRouter(handlers api.Handlers, cfg *config.Configuration, logger *logger.Logger, secretService service.SecretService, envAccessService service.EnvAccessService, rbacService *rbac.RBACService) *gin.Engine {
-	return api.NewRouter(handlers, cfg, logger, secretService, envAccessService, rbacService)
+func provideRouter(handlers api.Handlers, cfg *config.Configuration, logger *logger.Logger, secretService service.SecretService, envAccessService service.EnvAccessService, rbacService *rbac.RBACService, signozService *signoz.Service) *gin.Engine {
+	return api.NewRouter(handlers, cfg, logger, secretService, envAccessService, rbacService, signozService)
 }
 
 func provideTemporalConfig(cfg *config.Configuration) *config.TemporalConfig {
@@ -540,7 +543,7 @@ func registerRouterHandlers(
 		// Register handlers
 		eventConsumptionSvc.RegisterHandler(router, cfg)
 		eventConsumptionSvc.RegisterHandlerLazy(router, cfg)
-		// eventPostProcessingSvc.RegisterHandler(router, cfg)
+		eventPostProcessingSvc.RegisterHandler(router, cfg)
 		featureUsageSvc.RegisterHandler(router, cfg)
 		featureUsageSvc.RegisterHandlerLazy(router, cfg)
 		costSheetUsageSvc.RegisterHandler(router, cfg)

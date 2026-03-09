@@ -244,6 +244,12 @@ func GatewayPaymentMethodID(v string) predicate.Subscription {
 	return predicate.Subscription(sql.FieldEQ(FieldGatewayPaymentMethodID, v))
 }
 
+// InvoiceCadence applies equality check predicate on the "invoice_cadence" field. It's identical to InvoiceCadenceEQ.
+func InvoiceCadence(v types.InvoiceCadence) predicate.Subscription {
+	vc := string(v)
+	return predicate.Subscription(sql.FieldEQ(FieldInvoiceCadence, vc))
+}
+
 // CustomerTimezone applies equality check predicate on the "customer_timezone" field. It's identical to CustomerTimezoneEQ.
 func CustomerTimezone(v string) predicate.Subscription {
 	return predicate.Subscription(sql.FieldEQ(FieldCustomerTimezone, v))
@@ -2316,6 +2322,90 @@ func GatewayPaymentMethodIDEqualFold(v string) predicate.Subscription {
 // GatewayPaymentMethodIDContainsFold applies the ContainsFold predicate on the "gateway_payment_method_id" field.
 func GatewayPaymentMethodIDContainsFold(v string) predicate.Subscription {
 	return predicate.Subscription(sql.FieldContainsFold(FieldGatewayPaymentMethodID, v))
+}
+
+// InvoiceCadenceEQ applies the EQ predicate on the "invoice_cadence" field.
+func InvoiceCadenceEQ(v types.InvoiceCadence) predicate.Subscription {
+	vc := string(v)
+	return predicate.Subscription(sql.FieldEQ(FieldInvoiceCadence, vc))
+}
+
+// InvoiceCadenceNEQ applies the NEQ predicate on the "invoice_cadence" field.
+func InvoiceCadenceNEQ(v types.InvoiceCadence) predicate.Subscription {
+	vc := string(v)
+	return predicate.Subscription(sql.FieldNEQ(FieldInvoiceCadence, vc))
+}
+
+// InvoiceCadenceIn applies the In predicate on the "invoice_cadence" field.
+func InvoiceCadenceIn(vs ...types.InvoiceCadence) predicate.Subscription {
+	v := make([]any, len(vs))
+	for i := range v {
+		v[i] = string(vs[i])
+	}
+	return predicate.Subscription(sql.FieldIn(FieldInvoiceCadence, v...))
+}
+
+// InvoiceCadenceNotIn applies the NotIn predicate on the "invoice_cadence" field.
+func InvoiceCadenceNotIn(vs ...types.InvoiceCadence) predicate.Subscription {
+	v := make([]any, len(vs))
+	for i := range v {
+		v[i] = string(vs[i])
+	}
+	return predicate.Subscription(sql.FieldNotIn(FieldInvoiceCadence, v...))
+}
+
+// InvoiceCadenceGT applies the GT predicate on the "invoice_cadence" field.
+func InvoiceCadenceGT(v types.InvoiceCadence) predicate.Subscription {
+	vc := string(v)
+	return predicate.Subscription(sql.FieldGT(FieldInvoiceCadence, vc))
+}
+
+// InvoiceCadenceGTE applies the GTE predicate on the "invoice_cadence" field.
+func InvoiceCadenceGTE(v types.InvoiceCadence) predicate.Subscription {
+	vc := string(v)
+	return predicate.Subscription(sql.FieldGTE(FieldInvoiceCadence, vc))
+}
+
+// InvoiceCadenceLT applies the LT predicate on the "invoice_cadence" field.
+func InvoiceCadenceLT(v types.InvoiceCadence) predicate.Subscription {
+	vc := string(v)
+	return predicate.Subscription(sql.FieldLT(FieldInvoiceCadence, vc))
+}
+
+// InvoiceCadenceLTE applies the LTE predicate on the "invoice_cadence" field.
+func InvoiceCadenceLTE(v types.InvoiceCadence) predicate.Subscription {
+	vc := string(v)
+	return predicate.Subscription(sql.FieldLTE(FieldInvoiceCadence, vc))
+}
+
+// InvoiceCadenceContains applies the Contains predicate on the "invoice_cadence" field.
+func InvoiceCadenceContains(v types.InvoiceCadence) predicate.Subscription {
+	vc := string(v)
+	return predicate.Subscription(sql.FieldContains(FieldInvoiceCadence, vc))
+}
+
+// InvoiceCadenceHasPrefix applies the HasPrefix predicate on the "invoice_cadence" field.
+func InvoiceCadenceHasPrefix(v types.InvoiceCadence) predicate.Subscription {
+	vc := string(v)
+	return predicate.Subscription(sql.FieldHasPrefix(FieldInvoiceCadence, vc))
+}
+
+// InvoiceCadenceHasSuffix applies the HasSuffix predicate on the "invoice_cadence" field.
+func InvoiceCadenceHasSuffix(v types.InvoiceCadence) predicate.Subscription {
+	vc := string(v)
+	return predicate.Subscription(sql.FieldHasSuffix(FieldInvoiceCadence, vc))
+}
+
+// InvoiceCadenceEqualFold applies the EqualFold predicate on the "invoice_cadence" field.
+func InvoiceCadenceEqualFold(v types.InvoiceCadence) predicate.Subscription {
+	vc := string(v)
+	return predicate.Subscription(sql.FieldEqualFold(FieldInvoiceCadence, vc))
+}
+
+// InvoiceCadenceContainsFold applies the ContainsFold predicate on the "invoice_cadence" field.
+func InvoiceCadenceContainsFold(v types.InvoiceCadence) predicate.Subscription {
+	vc := string(v)
+	return predicate.Subscription(sql.FieldContainsFold(FieldInvoiceCadence, vc))
 }
 
 // CustomerTimezoneEQ applies the EQ predicate on the "customer_timezone" field.

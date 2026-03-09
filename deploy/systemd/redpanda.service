@@ -1,0 +1,26 @@
+[Unit]
+Description=Redpanda Message Broker
+After=network.target
+
+[Service]
+Type=simple
+User=redpanda
+Group=redpanda
+WorkingDirectory=/var/lib/redpanda
+ExecStart=/opt/redpanda/bin/redpanda --redpanda-cfg /etc/redpanda/redpanda.yaml
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+# Resource limits
+# IMPORTANT: MemoryMax MUST be >= redpanda.yaml `memory` setting (currently 3G).
+# If MemoryMax < memory, each shard gets insufficient RAM → OOM crash loop on partition replay.
+LimitNOFILE=100000
+MemoryMax=3G
+
+# Security
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

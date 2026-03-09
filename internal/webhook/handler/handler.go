@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"strings"
 
 	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/flexprice/flexprice/internal/config"
@@ -147,11 +148,29 @@ func (h *handler) processMessageSvix(ctx context.Context, event *types.WebhookEv
 
 // processMessageNative processes a webhook message using native webhook system
 func (h *handler) processMessageNative(ctx context.Context, event *types.WebhookEvent, messageUUID string) error {
-	// Get tenant config
-	tenantCfg, ok := h.config.Tenants[event.TenantID]
+	h.logger.Infow("processing webhook message (native)",
+		"event_type", event.EventName,
+		"tenant_id", event.TenantID,
+		"tenant_id_lowercase", strings.ToLower(event.TenantID),
+		"message_uuid", messageUUID,
+		"available_tenants", h.config.Tenants,
+	)
+
+	// Get tenant config - try tenant_id/env_id first for per-environment routing,
+	// then fall back to tenant_id only for backward compatibility.
+	// Use lowercase keys since viper/mapstructure lowercases map keys.
+	envKey := strings.ToLower(event.TenantID + "/" + event.EnvironmentID)
+	tenantKey := strings.ToLower(event.TenantID)
+
+	tenantCfg, ok := h.config.Tenants[envKey]
+	if !ok {
+		tenantCfg, ok = h.config.Tenants[tenantKey]
+	}
 	if !ok {
 		h.logger.Warnw("tenant config not found",
 			"tenant_id", event.TenantID,
+			"environment_id", event.EnvironmentID,
+			"keys_tried", []string{envKey, tenantKey},
 			"message_uuid", messageUUID,
 		)
 		// Don't retry if tenant not found

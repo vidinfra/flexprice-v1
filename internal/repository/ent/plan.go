@@ -472,6 +472,15 @@ func (o PlanQueryOptions) applyEntityQueryOptions(_ context.Context, f *types.Pl
 		query = query.Where(plan.LookupKeyEQ(*f.LookupKey))
 	}
 
+	// Filter by lookup_key prefixes (OR condition)
+	if len(f.LookupKeyPrefixes) > 0 {
+		predicates := make([]predicate.Plan, 0, len(f.LookupKeyPrefixes))
+		for _, prefix := range f.LookupKeyPrefixes {
+			predicates = append(predicates, plan.LookupKeyHasPrefix(prefix))
+		}
+		query = query.Where(plan.Or(predicates...))
+	}
+
 	if f.Filters != nil {
 		query, err = dsl.ApplyFilters[PlanQuery, predicate.Plan](
 			query,

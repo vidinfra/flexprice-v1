@@ -1,6 +1,8 @@
 package webhookDto
 
 import (
+	"time"
+
 	"github.com/flexprice/flexprice/internal/api/dto"
 	"github.com/flexprice/flexprice/internal/types"
 	"github.com/shopspring/decimal"
@@ -58,5 +60,41 @@ func NewTransactionWebhookPayload(transaction *dto.WalletTransactionResponse, wa
 		EventType:   eventType,
 		Transaction: transaction,
 		Wallet:      wallet,
+	}
+}
+
+// WalletNegativeBalancePayload represents the payload sent when a wallet crosses into negative balance
+// This is used to notify external systems (e.g., api.tenbyte) so they can decide whether to block users
+type WalletNegativeBalancePayload struct {
+	CustomerID     string          `json:"customer_id"`
+	SubscriptionID string          `json:"subscription_id"`
+	WalletID       string          `json:"wallet_id"`
+	WalletBalance  decimal.Decimal `json:"wallet_balance"`
+	Currency       string          `json:"currency"`
+	InvoiceID      string          `json:"invoice_id"`
+	Timestamp      time.Time       `json:"timestamp"`
+}
+
+// InternalWalletNegativeBalanceEvent is the internal event payload for wallet negative balance
+type InternalWalletNegativeBalanceEvent struct {
+	CustomerID     string          `json:"customer_id"`
+	SubscriptionID string          `json:"subscription_id"`
+	WalletID       string          `json:"wallet_id"`
+	WalletBalance  decimal.Decimal `json:"wallet_balance"`
+	Currency       string          `json:"currency"`
+	InvoiceID      string          `json:"invoice_id"`
+	TenantID       string          `json:"tenant_id"`
+}
+
+// WalletNegativeBalanceWebhookPayload is the final webhook payload sent to external systems
+type WalletNegativeBalanceWebhookPayload struct {
+	EventType string                        `json:"event_type"`
+	Data      *WalletNegativeBalancePayload `json:"data"`
+}
+
+func NewWalletNegativeBalanceWebhookPayload(data *WalletNegativeBalancePayload, eventType string) *WalletNegativeBalanceWebhookPayload {
+	return &WalletNegativeBalanceWebhookPayload{
+		EventType: eventType,
+		Data:      data,
 	}
 }

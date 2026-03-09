@@ -73,6 +73,8 @@ type Subscription struct {
 
 	BillingCadence types.BillingCadence `db:"billing_cadence" json:"billing_cadence"`
 
+	InvoiceCadence types.InvoiceCadence `db:"invoice_cadence" json:"invoice_cadence"`
+
 	BillingPeriod types.BillingPeriod `db:"billing_period" json:"billing_period"`
 
 	// BillingPeriodCount is the total number units of the billing period.
@@ -187,6 +189,7 @@ func GetSubscriptionFromEnt(sub *ent.Subscription) *Subscription {
 		BillingPeriod:          types.BillingPeriod(sub.BillingPeriod),
 		BillingPeriodCount:     sub.BillingPeriodCount,
 		BillingCycle:           types.BillingCycle(sub.BillingCycle),
+		InvoiceCadence:         types.InvoiceCadence(sub.InvoiceCadence),
 		Version:                sub.Version,
 		Metadata:               sub.Metadata,
 		EnvironmentID:          sub.EnvironmentID,

@@ -72,6 +72,10 @@ type BillingService interface {
 
 	// GetCustomerUsageSummary returns usage summaries for a customer's features
 	GetCustomerUsageSummary(ctx context.Context, customerID string, req *dto.GetCustomerUsageSummaryRequest) (*dto.CustomerUsageSummaryResponse, error)
+
+	// GetOverageInvoicedAmount gets the total amount already invoiced via real-time overage billing
+	// for a subscription within a billing period. This prevents double-billing during arrear invoicing.
+	GetOverageInvoicedAmount(ctx context.Context, subscriptionID string, periodStart, periodEnd time.Time) (decimal.Decimal, error)
 }
 
 type billingService struct {
@@ -1212,12 +1216,99 @@ func (s *billingService) CalculateAllCharges(
 		return nil, err
 	}
 
+	// Deduct already-invoiced overage amounts to prevent double billing
+	// Overage invoices are created in real-time and should be subtracted from arrear billing
+	overageInvoiced, err := s.GetOverageInvoicedAmount(ctx, sub.ID, periodStart, periodEnd)
+	if err != nil {
+		s.Logger.Warnw("failed to get overage invoiced amount, proceeding without deduction",
+			"error", err,
+			"subscription_id", sub.ID)
+		// Don't fail billing, proceed without deduction
+		overageInvoiced = decimal.Zero
+	}
+
+	// Adjust usage total by subtracting overage already invoiced
+	adjustedUsageTotal := usageTotal.Sub(overageInvoiced)
+	if adjustedUsageTotal.LessThan(decimal.Zero) {
+		// Overage exceeds calculated usage (shouldn't happen, but protect against it)
+		s.Logger.Warnw("overage invoiced exceeds usage total, setting usage to zero",
+			"subscription_id", sub.ID,
+			"usage_total", usageTotal.String(),
+			"overage_invoiced", overageInvoiced.String())
+		adjustedUsageTotal = decimal.Zero
+	}
+
+	// If there was an overage deduction, add a credit line item to show it
+	if overageInvoiced.GreaterThan(decimal.Zero) {
+		s.Logger.Infow("deducting overage already invoiced from arrear billing",
+			"subscription_id", sub.ID,
+			"usage_total", usageTotal.String(),
+			"overage_invoiced", overageInvoiced.String(),
+			"adjusted_usage_total", adjustedUsageTotal.String())
+
+		// Add a negative line item to show the overage credit
+		overageCreditLineItem := dto.CreateInvoiceLineItemRequest{
+			DisplayName: lo.ToPtr("Overage Already Invoiced (Credit)"),
+			Amount:      overageInvoiced.Neg(), // Negative amount for credit
+			Quantity:    decimal.NewFromInt(1),
+			PriceType:   lo.ToPtr(string(types.PRICE_TYPE_USAGE)),
+			PeriodStart: lo.ToPtr(periodStart),
+			PeriodEnd:   lo.ToPtr(periodEnd),
+			Metadata: types.Metadata{
+				"line_item_type":  "overage_credit",
+				"subscription_id": sub.ID,
+			},
+		}
+		usageCharges = append(usageCharges, overageCreditLineItem)
+	}
+
 	return &BillingCalculationResult{
 		FixedCharges: fixedCharges,
 		UsageCharges: usageCharges,
-		TotalAmount:  fixedTotal.Add(usageTotal),
+		TotalAmount:  fixedTotal.Add(adjustedUsageTotal),
 		Currency:     sub.Currency,
 	}, nil
+}
+
+// GetOverageInvoicedAmount gets the total amount already invoiced via real-time overage billing
+// for a subscription within a billing period. This prevents double-billing during arrear invoicing.
+func (s *billingService) GetOverageInvoicedAmount(
+	ctx context.Context,
+	subscriptionID string,
+	periodStart,
+	periodEnd time.Time,
+) (decimal.Decimal, error) {
+	// Query ONE_OFF invoices for this subscription within the period
+	// that have billing_type=overage in metadata
+	filter := &types.InvoiceFilter{
+		QueryFilter: &types.QueryFilter{
+			Status: lo.ToPtr(types.StatusPublished),
+		},
+		TimeRangeFilter: &types.TimeRangeFilter{
+			StartTime: lo.ToPtr(periodStart),
+			EndTime:   lo.ToPtr(periodEnd),
+		},
+		SubscriptionID: subscriptionID,
+		InvoiceType:    types.InvoiceTypeOneOff,
+		InvoiceStatus:  []types.InvoiceStatus{types.InvoiceStatusDraft, types.InvoiceStatusFinalized},
+	}
+
+	invoices, err := s.InvoiceRepo.List(ctx, filter)
+	if err != nil {
+		return decimal.Zero, err
+	}
+
+	// Sum up amounts from overage invoices (identified by metadata)
+	totalOverage := decimal.Zero
+	for _, inv := range invoices {
+		if inv.Metadata != nil {
+			if billingType, ok := inv.Metadata["billing_type"]; ok && billingType == "overage" {
+				totalOverage = totalOverage.Add(inv.AmountDue)
+			}
+		}
+	}
+
+	return totalOverage, nil
 }
 
 func (s *billingService) calculateAllChargesForPreview(
@@ -2044,8 +2135,11 @@ func (s *billingService) AggregateEntitlements(entitlements []*dto.EntitlementRe
 			// The entity_id is the subscription ID itself
 		}
 
-		// For subscription ID, use the one from the source if available, otherwise use the provided one
+		// For subscription ID, use the one from the entitlement if available, otherwise use the provided one
 		sourceSubscriptionID := subscriptionID
+		if ent.SubscriptionID != "" {
+			sourceSubscriptionID = ent.SubscriptionID
+		}
 
 		source := &dto.EntitlementSource{
 			SubscriptionID: sourceSubscriptionID,
@@ -2174,6 +2268,11 @@ func (s *billingService) GetCustomerEntitlements(ctx context.Context, customerID
 			continue
 		}
 
+		// Set the subscription ID on each entitlement for proper aggregation
+		for _, ent := range subEntitlements {
+			ent.SubscriptionID = sub.ID
+		}
+
 		// Filter by feature IDs if specified
 		if len(req.FeatureIDs) > 0 {
 			for _, ent := range subEntitlements {
@@ -2186,8 +2285,8 @@ func (s *billingService) GetCustomerEntitlements(ctx context.Context, customerID
 		}
 	}
 
-	// Use the generic aggregation function
-	aggregatedFeatures := s.AggregateEntitlements(allEntitlements, subscriptions[0].ID)
+	// Use the generic aggregation function (empty string since each entitlement has its SubscriptionID set)
+	aggregatedFeatures := s.AggregateEntitlements(allEntitlements, "")
 
 	// Build final response
 	response := &dto.CustomerEntitlementsResponse{

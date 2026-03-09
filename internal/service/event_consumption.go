@@ -16,6 +16,7 @@ import (
 	"github.com/flexprice/flexprice/internal/pubsub/kafka"
 	pubsubRouter "github.com/flexprice/flexprice/internal/pubsub/router"
 	"github.com/flexprice/flexprice/internal/sentry"
+	"github.com/flexprice/flexprice/internal/tenbyte/signoz"
 	"github.com/flexprice/flexprice/internal/types"
 )
 
@@ -37,6 +38,7 @@ type eventConsumptionService struct {
 	lazyPubSub             pubsub.PubSub
 	eventRepo              events.Repository
 	sentryService          *sentry.Service
+	signozService          *signoz.Service // Tenbyte: SigNoz tracing
 	eventPostProcessingSvc EventPostProcessingService
 }
 
@@ -45,12 +47,14 @@ func NewEventConsumptionService(
 	params ServiceParams,
 	eventRepo events.Repository,
 	sentryService *sentry.Service,
+	signozService *signoz.Service, // Tenbyte: SigNoz tracing
 	eventPostProcessingSvc EventPostProcessingService,
 ) EventConsumptionService {
 	ev := &eventConsumptionService{
 		ServiceParams:          params,
 		eventRepo:              eventRepo,
 		sentryService:          sentryService,
+		signozService:          signozService,
 		eventPostProcessingSvc: eventPostProcessingSvc,
 	}
 
@@ -165,6 +169,20 @@ func (s *eventConsumptionService) processMessage(msg *message.Message) error {
 		return err
 	}
 
+	// Tenbyte: Start SigNoz span for Kafka event processing
+	ctx, span := s.signozService.StartKafkaConsumerSpan(ctx, "events")
+	defer span.End()
+	span.SetAttributes(
+		signoz.OrganizationID(event.ExternalCustomerID),
+		signoz.EventName(event.EventName),
+		signoz.EventID(event.ID),
+		signoz.TenantID(event.TenantID),
+	)
+	// Tenbyte: Add event properties as span attributes
+	for key, value := range event.Properties {
+		span.SetAttributes(signoz.EventProperty(key, value))
+	}
+
 	s.Logger.Debugw("processing event",
 		"event_id", event.ID,
 		"event_name", event.EventName,
@@ -211,21 +229,18 @@ func (s *eventConsumptionService) processMessage(msg *message.Message) error {
 			Mark(ierr.ErrSystem)
 	}
 
-	// Publish event to post-processing service
-	// Only for the tenants that are forced to v1
-	if s.Config.FeatureFlag.ForceV1ForTenant != "" && event.TenantID == s.Config.FeatureFlag.ForceV1ForTenant {
-		if err := s.eventPostProcessingSvc.PublishEvent(ctx, &event, false); err != nil {
-			s.Logger.Errorw("failed to publish event to post-processing service",
-				"error", err,
-				"event_id", event.ID,
-				"event_name", event.EventName,
-			)
+	// Publish event to post-processing service for cost calculation
+	if err := s.eventPostProcessingSvc.PublishEvent(ctx, &event, false); err != nil {
+		s.Logger.Errorw("failed to publish event to post-processing service",
+			"error", err,
+			"event_id", event.ID,
+			"event_name", event.EventName,
+		)
 
-			// Return error for retry
-			return ierr.WithError(err).
-				WithHint("Failed to publish event for post-processing").
-				Mark(ierr.ErrSystem)
-		}
+		// Return error for retry
+		return ierr.WithError(err).
+			WithHint("Failed to publish event for post-processing").
+			Mark(ierr.ErrSystem)
 	}
 
 	s.Logger.Debugw("successfully processed event",
@@ -298,17 +313,14 @@ func (s *eventConsumptionService) ProcessRawEvent(ctx context.Context, payload [
 		return fmt.Errorf("failed to insert events: %w", err)
 	}
 
-	// Publish event to post-processing service
-	// Only for the tenants that are forced to v1
-	if s.Config.FeatureFlag.ForceV1ForTenant != "" && event.TenantID == s.Config.FeatureFlag.ForceV1ForTenant {
-		if err := s.eventPostProcessingSvc.PublishEvent(ctx, &event, false); err != nil {
-			s.Logger.Errorw("failed to publish event to post-processing service",
-				"error", err,
-				"event_id", event.ID,
-				"event_name", event.EventName,
-			)
-			return fmt.Errorf("failed to publish event for post-processing: %w", err)
-		}
+	// Publish event to post-processing service for cost calculation
+	if err := s.eventPostProcessingSvc.PublishEvent(ctx, &event, false); err != nil {
+		s.Logger.Errorw("failed to publish event to post-processing service",
+			"error", err,
+			"event_id", event.ID,
+			"event_name", event.EventName,
+		)
+		return fmt.Errorf("failed to publish event for post-processing: %w", err)
 	}
 
 	s.Logger.Debugw("successfully processed raw event",

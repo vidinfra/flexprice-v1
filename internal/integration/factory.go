@@ -25,6 +25,8 @@ import (
 	"github.com/flexprice/flexprice/internal/integration/razorpay"
 	razorpaywebhook "github.com/flexprice/flexprice/internal/integration/razorpay/webhook"
 	"github.com/flexprice/flexprice/internal/integration/s3"
+	"github.com/flexprice/flexprice/internal/integration/sslcommerz"
+	sslcommerzwebhook "github.com/flexprice/flexprice/internal/integration/sslcommerz/webhook"
 	"github.com/flexprice/flexprice/internal/integration/stripe"
 	"github.com/flexprice/flexprice/internal/integration/stripe/webhook"
 	"github.com/flexprice/flexprice/internal/logger"
@@ -449,6 +451,36 @@ func (f *Factory) GetNomodIntegration(ctx context.Context) (*NomodIntegration, e
 	}, nil
 }
 
+// GetSSLCommerzIntegration returns a complete SSLCommerz integration setup
+func (f *Factory) GetSSLCommerzIntegration(ctx context.Context) (*SSLCommerzIntegration, error) {
+	// Create SSLCommerz client
+	sslcommerzClient := sslcommerz.NewClient(
+		f.connectionRepo,
+		f.encryptionService,
+		f.logger,
+		f.config,
+	)
+
+	// Create payment service
+	paymentSvc := sslcommerz.NewPaymentService(
+		sslcommerzClient,
+		f.logger,
+	)
+
+	// Create webhook handler
+	webhookHandler := sslcommerzwebhook.NewHandler(
+		sslcommerzClient,
+		paymentSvc,
+		f.logger,
+	)
+
+	return &SSLCommerzIntegration{
+		Client:         sslcommerzClient,
+		PaymentSvc:     paymentSvc,
+		WebhookHandler: webhookHandler,
+	}, nil
+}
+
 // GetIntegrationByProvider returns the appropriate integration for the given provider type
 func (f *Factory) GetIntegrationByProvider(ctx context.Context, providerType types.SecretProvider) (interface{}, error) {
 	switch providerType {
@@ -464,6 +496,8 @@ func (f *Factory) GetIntegrationByProvider(ctx context.Context, providerType typ
 		return f.GetQuickBooksIntegration(ctx)
 	case types.SecretProviderNomod:
 		return f.GetNomodIntegration(ctx)
+	case types.SecretProviderSSLCommerz:
+		return f.GetSSLCommerzIntegration(ctx)
 	default:
 		return nil, ierr.NewError("unsupported integration provider").
 			WithHint("Provider type is not supported").
@@ -483,6 +517,7 @@ func (f *Factory) GetSupportedProviders() []types.SecretProvider {
 		types.SecretProviderChargebee,
 		types.SecretProviderQuickBooks,
 		types.SecretProviderNomod,
+		types.SecretProviderSSLCommerz,
 	}
 }
 
@@ -554,6 +589,13 @@ type NomodIntegration struct {
 	PaymentSvc     *nomod.PaymentService
 	InvoiceSyncSvc *nomod.InvoiceSyncService
 	WebhookHandler *nomodwebhook.Handler
+}
+
+// SSLCommerzIntegration contains all SSLCommerz integration services
+type SSLCommerzIntegration struct {
+	Client         sslcommerz.SSLCommerzClient
+	PaymentSvc     *sslcommerz.PaymentService
+	WebhookHandler *sslcommerzwebhook.Handler
 }
 
 // IntegrationProvider defines the interface for all integration providers
@@ -637,6 +679,21 @@ func (p *NomodProvider) IsAvailable(ctx context.Context) bool {
 	return p.integration.Client.HasNomodConnection(ctx)
 }
 
+// SSLCommerzProvider implements IntegrationProvider for SSLCommerz
+type SSLCommerzProvider struct {
+	integration *SSLCommerzIntegration
+}
+
+// GetProviderType returns the provider type
+func (p *SSLCommerzProvider) GetProviderType() types.SecretProvider {
+	return types.SecretProviderSSLCommerz
+}
+
+// IsAvailable checks if SSLCommerz integration is available
+func (p *SSLCommerzProvider) IsAvailable(ctx context.Context) bool {
+	return p.integration.Client.HasSSLCommerzConnection(ctx)
+}
+
 // GetAvailableProviders returns all available providers for the current environment
 func (f *Factory) GetAvailableProviders(ctx context.Context) ([]IntegrationProvider, error) {
 	var providers []IntegrationProvider
@@ -683,6 +740,15 @@ func (f *Factory) GetAvailableProviders(ctx context.Context) ([]IntegrationProvi
 		nomodProvider := &NomodProvider{integration: nomodIntegration}
 		if nomodProvider.IsAvailable(ctx) {
 			providers = append(providers, nomodProvider)
+		}
+	}
+
+	// Check SSLCommerz
+	sslcommerzIntegration, err := f.GetSSLCommerzIntegration(ctx)
+	if err == nil {
+		sslcommerzProvider := &SSLCommerzProvider{integration: sslcommerzIntegration}
+		if sslcommerzProvider.IsAvailable(ctx) {
+			providers = append(providers, sslcommerzProvider)
 		}
 	}
 
